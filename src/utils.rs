@@ -1,14 +1,7 @@
 use crate::{
     size_of,
     align_of,
-    ptr,
-    NonNull,
-    alloc,
-    Layout,
 };
-
-#[cfg(not(no_global_oom_handling))]
-use crate::handle_alloc_error;
 
 pub(crate) struct MemUtil;
 
@@ -19,112 +12,35 @@ impl MemUtil {
     pub(crate) const fn max_capacity_for_type(type_size: usize, type_align: usize) -> usize {
         (isize::MAX as usize - (type_align - 1)) / type_size
     }
-
-    #[inline(never)]
-    pub(crate) fn resize_memory_region(old_u8_ptr: Option<*mut u8>, type_size: usize, type_align: usize, current_capacity: usize, target_capacity: usize) -> (NonNull<u8>, usize) {
-        if target_capacity > Self::max_capacity_for_type(type_size, type_align) {
-            panic!("capacity would overfow user-space memory");
-        }
-        let new_layout = unsafe { Layout::from_size_align_unchecked(target_capacity*type_size, type_align) };
-        let new_ptr = match old_u8_ptr {
-            Some(old_ptr) => {
-                let old_layout = unsafe { Layout::from_size_align_unchecked(current_capacity*type_size, type_align) };
-                unsafe { alloc::realloc(old_ptr, old_layout, new_layout.size()) }
-            },
-            None => {
-                unsafe { alloc::alloc(new_layout) }
-            }
-        };
-        match NonNull::new(new_ptr) {
-            Some(non_null) => (non_null, target_capacity),
-            None => {
-                if cfg!(not(no_global_oom_handling)) {
-                    handle_alloc_error(new_layout)
-                } else {
-                    panic!("could not allocate memory!")
-                }
-            },
-        }
-    }
-
-    #[inline(never)]
-    pub(crate) fn resize_memory_region_of_usize(old_u8_ptr: Option<*mut u8>, current_capacity: usize, target_capacity: usize) -> (NonNull<u8>, usize) {
-        if target_capacity > Self::MAX_CAPACITY_FOR_USIZE {
-            panic!("capacity would overfow user-space memory");
-        }
-        let new_layout = unsafe { Layout::from_size_align_unchecked(target_capacity*size_of::<usize>(), align_of::<usize>()) };
-        let new_ptr = match old_u8_ptr {
-            Some(old_ptr) => {
-                let old_layout = unsafe { Layout::from_size_align_unchecked(current_capacity*size_of::<usize>(), align_of::<usize>()) };
-                unsafe { alloc::realloc(old_ptr, old_layout, new_layout.size()) }
-            },
-            None => {
-                unsafe { alloc::alloc(new_layout) }
-            }
-        };
-        match NonNull::new(new_ptr) {
-            Some(non_null) => (non_null, target_capacity),
-            None => {
-                if cfg!(not(no_global_oom_handling)) {
-                    handle_alloc_error(new_layout)
-                } else {
-                    panic!("could not allocate memory!")
-                }
-            },
-        }
-    }
-
-
-    pub(crate) fn drop_range_in_place<T>(start_ptr: *mut T, count: usize) {
-        let mut idx: usize = 0;
-        while idx < count {
-            unsafe{ptr::drop_in_place(start_ptr.add(idx))};
-            idx += 1;
-        }
-    }
 }
 
 pub(crate) struct BitUtil;
 
 impl BitUtil {
+    pub(crate) const USIZE_BYTES: usize = usize::BITS as usize >> 3;
+    pub(crate) const USIZE_BITS: usize = usize::BITS as usize;
+    
     #[inline(always)]
     pub(crate) const fn smear_left(mut val: usize) -> usize {
-        match usize::BITS {
-            64 => {
-                val |= val << 1;
-                val |= val << 2;
-                val |= val << 4;
-                val |= val << 8;
-                val |= val << 16;
-                val << 32
-            },
-            32 => {
-                val |= val << 1;
-                val |= val << 2;
-                val |= val << 4;
-                val |= val << 8;
-                val << 16
-            },
-            16 => {
-                val |= val << 1;
-                val |= val << 2;
-                val |= val << 4;
-                val << 8
-            },
-            8 => {
-                val |= val << 1;
-                val |= val << 2;
-                val << 4
-            },
-            _ => {
-                val |= val << 1;
-                val |= val << 2;
-                val |= val << 4;
-                val |= val << 8;
-                val |= val << 16;
-                val << 32
-            },
+        if usize::BITS > 1 {
+            val |= val << 1;
         }
+        if usize::BITS > 2 {
+            val |= val << 2;
+        }
+        if usize::BITS > 4 {
+            val |= val << 4;
+        }
+        if usize::BITS > 8 {
+            val |= val << 8;
+        }
+        if usize::BITS > 16 {
+            val |= val << 16;
+        }
+        if usize::BITS > 32 {
+            val |= val << 32;
+        }
+        val
     }
 
     #[inline(always)]
@@ -134,42 +50,25 @@ impl BitUtil {
 
     #[inline(always)]
     pub(crate) const fn smear_right(mut val: usize) -> usize {
-        match usize::BITS {
-            64 => {
-                val |= val >> 1;
-                val |= val >> 2;
-                val |= val >> 4;
-                val |= val >> 8;
-                val |= val >> 16;
-                val >> 32
-            },
-            32 => {
-                val |= val >> 1;
-                val |= val >> 2;
-                val |= val >> 4;
-                val |= val >> 8;
-                val >> 16
-            },
-            16 => {
-                val |= val >> 1;
-                val |= val >> 2;
-                val |= val >> 4;
-                val >> 8
-            },
-            8 => {
-                val |= val >> 1;
-                val |= val >> 2;
-                val >> 4
-            },
-            _ => {
-                val |= val >> 1;
-                val |= val >> 2;
-                val |= val >> 4;
-                val |= val >> 8;
-                val |= val >> 16;
-                val >> 32
-            },
+        if usize::BITS > 1 {
+            val |= val >> 1;
         }
+        if usize::BITS > 2 {
+            val |= val >> 2;
+        }
+        if usize::BITS > 4 {
+            val |= val >> 4;
+        }
+        if usize::BITS > 8 {
+            val |= val >> 8;
+        }
+        if usize::BITS > 16 {
+            val |= val >> 16;
+        }
+        if usize::BITS > 32 {
+            val |= val >> 32;
+        }
+        val
     }
 
     #[inline(always)]
@@ -178,12 +77,58 @@ impl BitUtil {
     }
 
     // #[inline(always)]
-    // pub(crate) const fn all_bits_greater_than_or_equal_to_bit(bit_number: usize) -> usize {
-    //     Self::smear_left(1 << bit_number)
+    // pub(crate) fn saturating_left_shift_mult(val: usize, shift: usize) -> usize {
+    //     let saturating_mask = Self::smear_left(1 << (Self::USIZE_BITS - shift));
+    //     let saturated = Self::smear_right(val & saturating_mask);
+    //     saturated | (val << shift)
     // }
 
-    // #[inline(always)]
-    // pub(crate) const fn all_bits_greater_than_bit(bit_number: usize) -> usize {
-    //     Self::smear_left(1 << bit_number + 1)
-    // }
+    #[inline(always)]
+    pub(crate) const fn one_if_val_isnt_zero(mut val: usize) -> usize {
+        val = Self::smear_right(val);
+        val & 1
+    }
+
+    #[inline(always)]
+    pub(crate) const fn zero_mask_if_bit_offset_is_zero(mut bit_off: usize) -> usize {
+        bit_off |= bit_off << 1;
+        bit_off |= bit_off << 2;
+        bit_off |= bit_off << 4;
+        bit_off |= bit_off >> 8;
+        bit_off |= bit_off << 8;
+        bit_off |= bit_off << 16;
+        bit_off | bit_off << 32
+    }
+
+    #[inline(always)]
+    pub(crate) const fn calc_total_bits_in_num_usize(num_usize: usize) -> usize {
+        match Self::USIZE_BITS {
+            64 => num_usize << 6,
+            32 => num_usize << 5,
+            16 => num_usize << 4,
+            _ => num_usize * Self::USIZE_BITS
+        }
+    }
+
+    
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn zero_mask_if_bit_offset_is_zero() {
+        assert_eq!(0, BitUtil::zero_mask_if_bit_offset_is_zero(0));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(1));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(3));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(10));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(42));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(63));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(64));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(128));
+        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(256));
+        // fails at bit offset 512 or greater
+        assert_ne!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(512));
+    }
 }

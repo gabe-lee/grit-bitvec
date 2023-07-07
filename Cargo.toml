@@ -1,8 +1,20 @@
 [package]
-name = "grit-xvec"
-version = "0.1.0"
+name = "grit-bitvec"
+description = "Provides BitVec, a vector type that can store fixed-width data with irregular bit widths"
+version = "0.1.1"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Gabriel Lee Anderson <gla.ander@gmail.com>"]
+repository = "https://github.com/gabe-lee/grit-bitvec.git"
+license = "BSD-3-Clause"
+keywords = []
+categories = ["data-structures"]
 
 [dependencies]
+
+[profile.dev]
+overflow-checks = false
+
+[features]
+default = ["small_int_impls"]
+small_int_impls = []
+large_int_impls = []
