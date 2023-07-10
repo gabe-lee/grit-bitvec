@@ -33,6 +33,10 @@ pub(crate) use std::alloc::{self, Layout};
 
 mod bitvec;
 pub use bitvec::*;
+mod raw_bitvec;
+pub use raw_bitvec::*;
+mod index_proxy;
+pub use index_proxy::*;
 mod bitvec_elem;
 pub use bitvec_elem::*;
 mod bitvec_iter;

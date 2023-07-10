@@ -5,7 +5,7 @@ size categories. For example, rather than storing a vector of `bool`s in one byt
 
 This allows considerable gains in memory usage for applications where the number of elements may be non-trivial, at the cost of processing cost to access the elements.
 
-The additional processing cost is not terrible in most cases, as it is mostly performed with bitwise shifts and simple arithmetic, and is further reduced by using constant comparisons to reduce many bitwise math functions to their easiest possible form. However they are not free, and the insert() and remove() funstions may be even more costly due to the need to run those checks and shifts on every element rather than using `ptr::copy()` like `Vec` does internally
+The additional processing cost is not terrible in most cases, as it is mostly performed with bitwise shifts and simple arithmetic, and is further reduced by using constant comparisons to reduce many bitwise math functions to their easiest possible form. However they are not free, and the insert() and remove() functions may be even more costly due to the need to run those checks and shifts on every element rather than using `ptr::copy()` like `Vec` does internally
 
 by default the `small_int_impls` feature is enabled, providing an simple `BitElem` implementation for `bool` and integer types smaller than 16 bits (for example `u8_as_u3` or `i16_as_i11`), and the `large_int_impls` feature can be activated to get similar implementations for bit widths less than `usize::BITS`
 
