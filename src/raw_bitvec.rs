@@ -4,22 +4,14 @@ use crate::{
     mem,
     align_of,
     size_of,
-    needs_drop,
     ptr,
     NonNull,
-    PhantomData,
     alloc,
     Layout,
-    MemUtil,
     BitUtil,
-    BVecIter,
-    BVecDrain,
-    BitElem,
-    ElementCount,
-    Grow,
-    Shrink,
-    Resize,
-    ElemAccess, utils::RangeUtil, IdxProxy, IdxProxyRange
+    RawBitVecIter,
+    RawBitVecDrain,
+    utils::RangeUtil, IdxProxy, IdxProxyRange
 };
 
 pub struct RawBitVec<const BIT_WIDTH: usize> {
@@ -81,16 +73,6 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         }
     }
 
-    // #[inline]
-    // pub fn grow_if_needed(&mut self, elem_count: ElementCount) -> Result<(), String> {
-    //     self.grow_if_needed_custom(elem_count, Self::DEFAULT_GROW)
-    // }
-
-    // #[inline]
-    // pub fn grow_if_needed_custom(&mut self, elem_count: ElementCount, grow: Grow) -> Result<(), String> {
-    //     unsafe {self.handle_resize(elem_count, Resize::Grow(grow), false)}
-    // }
-
     #[inline]
     pub fn grow_exact_for_additional_elements_if_needed(&mut self, extra_elements: usize) -> Result<(), String> {
         unsafe {self.handle_grow_if_needed(self.len + extra_elements, false)}
@@ -116,17 +98,6 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         self.len = 0
     }
 
-    // #[inline]
-    // pub fn clear(&mut self) {
-    //     if needs_drop::<ELEM::Base>() {
-    //         while self.len > 0 {
-    //             let _ = unsafe {self.pop_unchecked()};
-    //         }
-    //     } else {
-    //         self.len = 0
-    //     }
-    // }
-
     #[inline]
     pub fn push(&mut self, val: usize) -> Result<(), String> {
         match self.len == IdxProxy::<BIT_WIDTH>::MAX_CAPACITY {
@@ -143,6 +114,7 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     pub unsafe fn push_unchecked(&mut self, val: usize) {
         if BIT_WIDTH > 0 {
             let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
+            #[cfg(test)]
             self.clean_new_blocks_if_needed(len_proxy, 1);
             self.write_val_with_idx_proxy(len_proxy, val);
         }
@@ -190,7 +162,9 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     pub unsafe fn insert_unchecked(&mut self, idx: usize, val: usize) {
         if BIT_WIDTH > 0 {
             let idx_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
+            #[cfg(test)]
             let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
+            #[cfg(test)]
             self.clean_new_blocks_if_needed(len_proxy, 1);
             self.shift_elements_up_with_with_idx_proxy(idx_proxy, 1);
             self.write_val_with_idx_proxy(idx_proxy, val);
@@ -220,8 +194,10 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         let mut read_iter = IdxProxyRange::<BIT_WIDTH>::from(0..bitvec.len);
         let mut count = bitvec.len;
         let begin_idx = IdxProxy::<BIT_WIDTH>::from(insert_idx);
+        #[cfg(test)]
         let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
         unsafe {
+            #[cfg(test)]
             self.clean_new_blocks_if_needed(len_proxy, count);
             self.shift_elements_up_with_with_idx_proxy(begin_idx, count);
             while count > 0 {
@@ -229,60 +205,10 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
                     let read_idx = read_iter.next().unwrap();
                     let val = bitvec.read_val_with_idx_proxy(read_idx);
                     self.write_val_with_idx_proxy(write_idx, val);
+                    count -= 1;
             }
         }
     }
-
-    // #[inline]
-    // pub unsafe fn insert_iter<II>(&mut self, insert_idx: usize, source: II) -> Result<(), String>
-    // where II: IntoIterator<Item = ELEM::Base> {
-    //     match insert_idx > self.len {
-    //         true => Err(format!("index out of bounds for insert_iter:\n\tlen = {}\n\tidx = {}", self.len, insert_idx)),
-    //         false => {
-    //             let iter = source.into_iter();
-                
-    //             Ok(())
-    //         },
-    //     }
-    //     if insert_idx > self.len {
-
-    //     }
-    //     let iter = source.into_iter();
-    //     if ELEM::BITS > 0 {
-    //         for elem in iter {
-    //             self.insert_unchecked(insert_idx, elem);
-    //         }
-    //     } else {
-    //         for _ in iter {
-    //             self.len += 1;
-    //         }
-    //     }
-    //     let iter = source.into_iter();
-    //     if ELEM::BITS > 0 {
-    //         for elem in iter {
-    //             self.insert_unchecked(insert_idx, elem);
-    //         }
-    //     } else {
-    //         for _ in iter {
-    //             self.len += 1;
-    //         }
-    //     }
-    // }
-
-    // #[inline]
-    // pub unsafe fn insert_iter_unchecked<II>(&mut self, mut insert_idx: usize, source: II)
-    // where II: IntoIterator<Item = ELEM::Base> {
-    //     let iter = source.into_iter();
-    //     if ELEM::BITS > 0 {
-    //         for elem in iter {
-    //             self.insert_unchecked(insert_idx, elem);
-    //         }
-    //     } else {
-    //         for _ in iter {
-    //             self.len += 1;
-    //         }
-    //     }
-    // }
 
     #[inline]
     pub fn remove(&mut self, idx: usize) -> Result<usize, String> {
@@ -413,46 +339,64 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         if IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - bitvec.len < self.len {
             return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", bitvec.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - self.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY));
         }
-        unsafe {self.append_bitvec_unchecked(bitvec)};
+        unsafe {
+            self.handle_grow_if_needed(self.len + bitvec.len, true)?;
+            self.append_bitvec_unchecked(bitvec);
+        }
         Ok(())
     }
 
     pub fn append_bitvec_unchecked(&mut self, bitvec: Self) {
-        let mut write_iter = IdxProxyRange::<BIT_WIDTH>::from(self.len..self.len+bitvec.len);
-        let mut read_iter = IdxProxyRange::<BIT_WIDTH>::from(0..bitvec.len);
-        let mut count = bitvec.len;
-        let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-        unsafe {
-            self.clean_new_blocks_if_needed(len_proxy, count);
-            while count > 0 {
-                    let write_idx = write_iter.next().unwrap();
-                    let read_idx = read_iter.next().unwrap();
-                    let val = bitvec.read_val_with_idx_proxy(read_idx);
-                    self.write_val_with_idx_proxy(write_idx, val);
+        if BIT_WIDTH > 0 {
+            let mut write_iter = IdxProxyRange::<BIT_WIDTH>::from(self.len..self.len+bitvec.len);
+            let mut read_iter = IdxProxyRange::<BIT_WIDTH>::from(0..bitvec.len);
+            let mut count = bitvec.len;
+            #[cfg(test)]
+            let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
+            unsafe {
+                #[cfg(test)]
+                self.clean_new_blocks_if_needed(len_proxy, count);
+                while count > 0 {
+                        let write_idx = write_iter.next().unwrap();
+                        let read_idx = read_iter.next().unwrap();
+                        let val = bitvec.read_val_with_idx_proxy(read_idx);
+                        self.write_val_with_idx_proxy(write_idx, val);
+                        count -= 1;
+                }
             }
+        } else {
+            self.len += bitvec.len
         }
     }
 
-    // #[inline]
-    // pub fn append_iter<II>(&mut self, source: II) -> Result<(), String>
-    // where II: IntoIterator<Item = ELEM::Base> {
-    //     self.append_iter_custom_grow(source, Self::DEFAULT_GROW)
-    // }
+    pub fn append_iter<II, TO, ESI>(&mut self, source: II) -> Result<(), String>
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        let iter = source.into_iter();
+        if IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - iter.len() < self.len {
+            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", iter.len(), IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - self.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY));
+        }
+        unsafe {
+            self.handle_grow_if_needed(self.len + iter.len(), true)?;
+            self.append_iter_unchecked(iter);
+        }
+        Ok(())
+    }
 
-    // #[inline]
-    // pub fn append_iter_custom_grow<II>(&mut self, source: II, grow: Grow) -> Result<(), String>
-    // where II: IntoIterator<Item = ELEM::Base> {
-    //     let iter = source.into_iter();
-    //     let projected_additional = match iter.size_hint() {
-    //         (_, Some(upper_bound)) => upper_bound,
-    //         (lower_bound, None) => lower_bound
-    //     };
-    //     self.grow_if_needed_custom(ElementCount::Additional(projected_additional), grow)?;
-    //     for elem in iter {
-    //         self.push_custom_grow(elem, grow)?;
-    //     }
-    //     Ok(())
-    // }
+    pub fn append_iter_unchecked<I, TO>(&mut self, mut iter: I)
+    where I: Iterator<Item = TO> + ExactSizeIterator, TO: ToOwned<Owned = usize> {
+        let mut count = iter.len();
+        #[cfg(test)]
+        let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
+        unsafe {
+            #[cfg(test)]
+            self.clean_new_blocks_if_needed(len_proxy, count);
+            while count > 0 {
+                    let val = iter.next().unwrap().to_owned();
+                    self.push_unchecked(val);
+                    count -= 1;
+            }
+        }
+    }
 
     #[inline]
     pub fn get(&self, idx: usize) -> Result<usize, String> {
@@ -510,16 +454,22 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         }
     }
 
-    // pub fn drain<'vec>(&'vec mut self) -> BVecDrain<'vec, ELEM> {
-    //     let drain = BVecDrain {
-    //         vec: PhantomData,
-    //         ptr: self.ptr,
-    //         start: 0,
-    //         count: self.len
-    //     };
-    //     self.len = 0;
-    //     drain
-    // }
+    #[inline(always)]
+    pub fn drain<'vec>(&'vec mut self) -> RawBitVecDrain<'vec, BIT_WIDTH> {
+        self.drain_range(..)
+    }
+
+    #[inline]
+    pub fn drain_range<'vec, RB: RangeBounds<usize>>(&'vec mut self, range: RB) -> RawBitVecDrain<'vec, BIT_WIDTH> {
+        let true_range = RangeUtil::get_real_bounds_for_veclike(range, self.len);
+        RawBitVecDrain {
+            vec: self,
+            start: true_range.start,
+            end_excluded: true_range.end,
+            begin_idx: true_range.start,
+            shift_idx: true_range.end
+        }
+    }
 
     #[inline]
     pub(crate) unsafe fn read_val_with_idx_proxy(&self, idx_proxy: IdxProxy<BIT_WIDTH>) -> usize {
@@ -551,6 +501,7 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         val
     }
 
+    #[cfg(test)]
     pub(crate) unsafe fn clean_new_blocks_if_needed(&mut self, len_proxy: IdxProxy<BIT_WIDTH>, added_elements: usize) {
         let final_proxy = IdxProxy::<BIT_WIDTH>::from(len_proxy.bitwise_idx + added_elements);
         let len_block_needs_clean = (len_proxy.first_offset == 0) as usize;
@@ -561,7 +512,7 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
 
     #[inline]
     pub(crate) unsafe fn write_val_with_idx_proxy(&mut self, idx_proxy: IdxProxy<BIT_WIDTH>, new_val: usize) {
-        let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.first_offset);
+        let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
         block_bits = (block_bits & !idx_proxy.first_mask) | (new_val << idx_proxy.first_offset);
         ptr::write(block_ptr, block_bits);
@@ -730,21 +681,19 @@ impl<const BIT_WIDTH: usize> Drop for RawBitVec<BIT_WIDTH> {
     }
 }
 
-// impl<ELEM> IntoIterator for BitVec<ELEM>
-// where ELEM: BitElem {
-//     type Item = ELEM::Base;
+impl<const BIT_WIDTH: usize> IntoIterator for RawBitVec<BIT_WIDTH> {
+    type Item = usize;
 
-//     type IntoIter = BVecIter<ELEM>;
+    type IntoIter = RawBitVecIter<BIT_WIDTH>;
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         let iter = BVecIter{
-//             ptr: self.ptr,
-//             real_cap: BitVec::<ELEM>::calc_real_count_from_sub_count(self.cap),
-//             start: 0,
-//             count: self.len,
-//             sub: PhantomData
-//         };
-//         mem::forget(self);
-//         iter
-//     }
-// }
+    fn into_iter(self) -> Self::IntoIter {
+        let iter = RawBitVecIter{
+            ptr: self.ptr,
+            real_cap: IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.cap),
+            start: 0,
+            end_excluded: self.len,
+        };
+        mem::forget(self);
+        iter
+    }
+}

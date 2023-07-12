@@ -5,15 +5,6 @@ use crate::{
     align_of,
 };
 
-#[derive(Clone, Copy)]
-pub(crate) struct ElemAccess {
-    pub(crate) start_idx: usize,
-    pub(crate) first_offset: usize,
-    pub(crate) second_offset: usize,
-    pub(crate) first_mask: usize,
-    pub(crate) second_mask: usize
-}
-
 pub(crate) struct RangeUtil;
 
 impl RangeUtil {
@@ -49,7 +40,6 @@ impl MemUtil {
 pub(crate) struct BitUtil;
 
 impl BitUtil {
-    pub(crate) const USIZE_BYTES: usize = usize::BITS as usize >> 3;
     pub(crate) const USIZE_BITS: usize = usize::BITS as usize;
     // pub(crate) const USIZE_MAX_SHIFT: usize = Self::USIZE_BITS - 1;
     
@@ -178,16 +168,16 @@ impl BitUtil {
         val & 1
     }
 
-    #[inline(always)]
-    pub(crate) const fn zero_mask_if_bit_offset_is_zero(mut bit_off: usize) -> usize {
-        bit_off |= bit_off << 1;
-        bit_off |= bit_off << 2;
-        bit_off |= bit_off << 4;
-        bit_off |= bit_off >> 8;
-        bit_off |= bit_off << 8;
-        bit_off |= bit_off << 16;
-        bit_off | bit_off << 32
-    }
+    // #[inline(always)]
+    // pub(crate) const fn zero_mask_if_bit_offset_is_zero(mut bit_off: usize) -> usize {
+    //     bit_off |= bit_off << 1;
+    //     bit_off |= bit_off << 2;
+    //     bit_off |= bit_off << 4;
+    //     bit_off |= bit_off >> 8;
+    //     bit_off |= bit_off << 8;
+    //     bit_off |= bit_off << 16;
+    //     bit_off | bit_off << 32
+    // }
 
     #[inline(always)]
     pub(crate) const fn calc_total_bits_in_num_usize(num_usize: usize) -> usize {
@@ -202,22 +192,22 @@ impl BitUtil {
     
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
+// #[cfg(test)]
+// mod test {
+//     use super::*;
 
-    #[test]
-    fn zero_mask_if_bit_offset_is_zero() {
-        assert_eq!(0, BitUtil::zero_mask_if_bit_offset_is_zero(0));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(1));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(3));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(10));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(42));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(63));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(64));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(128));
-        assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(256));
-        // fails at bit offset 512 or greater
-        assert_ne!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(512));
-    }
-}
+//     #[test]
+//     fn zero_mask_if_bit_offset_is_zero() {
+//         assert_eq!(0, BitUtil::zero_mask_if_bit_offset_is_zero(0));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(1));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(3));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(10));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(42));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(63));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(64));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(128));
+//         assert_eq!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(256));
+//         // fails at bit offset 512 or greater
+//         assert_ne!(usize::MAX, BitUtil::zero_mask_if_bit_offset_is_zero(512));
+//     }
+// }

@@ -245,9 +245,3 @@ pub enum ElementCount {
     Total(usize),
     Additional(usize),
 }
-
-pub(crate) enum Resize {
-    ExactCapacity(usize),
-    Grow(Grow),
-    Shrink(Shrink)
-}

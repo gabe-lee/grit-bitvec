@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Sub, SubAssign, Range, RangeFrom, RangeInclusive, RangeTo, RangeToInclusive};
+use std::ops::{Add, AddAssign, Sub, SubAssign, Range, RangeInclusive, RangeTo, RangeToInclusive};
 
 use crate::utils::{BitUtil, MemUtil};
 
@@ -53,10 +53,11 @@ impl<const BIT_WIDTH: usize> IdxProxy<BIT_WIDTH> {
     }
 
     #[inline(always)]
-    pub(crate) const fn calc_real_count_from_bitwise_count(count: usize) -> usize {
+    pub(crate) fn calc_real_count_from_bitwise_count(count: usize) -> usize {
         let idx_proxy = Self::from(count);
         idx_proxy.as_real_len_or_cap()
     }
+
 
 }
 
