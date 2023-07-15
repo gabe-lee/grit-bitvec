@@ -1,39 +1,42 @@
-use std::ops::{Range, RangeBounds};
-
 use crate::{
     size_of,
     align_of,
+    Layout
 };
 
-pub(crate) struct RangeUtil;
+// pub(crate) struct RangeUtil;
 
-impl RangeUtil {
+// impl RangeUtil {
     
-    pub(crate) fn get_real_bounds_for_veclike<RB>(bounds: RB, len: usize) -> Range<usize>
-    where RB: RangeBounds<usize> {
-        let true_start = match bounds.start_bound() {
-            std::ops::Bound::Included(start) => *start,
-            std::ops::Bound::Excluded(one_before_start) => *one_before_start + 1,
-            std::ops::Bound::Unbounded => 0,
-        };
-        let true_end = match bounds.end_bound() {
-            std::ops::Bound::Included(end) => *end + 1,
-            std::ops::Bound::Excluded(one_after_end) => *one_after_end,
-            std::ops::Bound::Unbounded => len,
-        };
-        true_start..true_end
-    }
-}
+//     pub(crate) fn get_real_bounds_for_veclike<RB>(bounds: RB, len: usize) -> Range<usize>
+//     where RB: RangeBounds<usize> {
+//         let true_start = match bounds.start_bound() {
+//             std::ops::Bound::Included(start) => *start,
+//             std::ops::Bound::Excluded(one_before_start) => *one_before_start + 1,
+//             std::ops::Bound::Unbounded => 0,
+//         };
+//         let true_end = match bounds.end_bound() {
+//             std::ops::Bound::Included(end) => *end + 1,
+//             std::ops::Bound::Excluded(one_after_end) => *one_after_end,
+//             std::ops::Bound::Unbounded => len,
+//         };
+//         true_start..true_end
+//     }
+// }
 
 
 pub(crate) struct MemUtil;
 
 impl MemUtil {
-    pub(crate) const MAX_CAPACITY_FOR_USIZE : usize =  Self::max_capacity_for_type(size_of::<usize>(), align_of::<usize>());
+    // pub(crate) const MAX_CAPACITY_FOR_USIZE : usize =  Self::max_capacity_for_type(size_of::<usize>(), align_of::<usize>());
 
-    #[inline(always)]
-    pub(crate) const fn max_capacity_for_type(type_size: usize, type_align: usize) -> usize {
-        (isize::MAX as usize - (type_align - 1)) / type_size
+    // #[inline(always)]
+    // pub(crate) const fn max_capacity_for_type(type_size: usize, type_align: usize) -> usize {
+    //     (isize::MAX as usize - (type_align - 1)) / type_size
+    // }
+
+    pub(crate) unsafe fn usize_array_layout(usize_count: usize) -> Layout {
+        Layout::from_size_align_unchecked(usize_count*size_of::<usize>(), align_of::<usize>())
     }
 }
 

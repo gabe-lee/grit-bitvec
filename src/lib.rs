@@ -44,18 +44,20 @@ This library is very much in the "unstable" phase and the API may change in the 
 
 pub(crate) use core::{
     mem::{
-        self,
         size_of,
         align_of,
-        // needs_drop,
+        ManuallyDrop
     },
     ptr::{
         self,
         NonNull,
     },
-    // marker::PhantomData,
+    marker::PhantomData,
+    cmp::Ordering,
+    ops::Range
 };
-pub(crate) use std::alloc::{self, Layout};
+
+pub(crate) use std::alloc::{self, Layout, handle_alloc_error};
 
 mod index_proxy;
 pub use index_proxy::*;
@@ -65,17 +67,33 @@ pub use raw_bitvec::*;
 mod raw_bitvec_iter;
 pub use raw_bitvec_iter::*;
 
+mod const_proto_bitvec;
+pub use const_proto_bitvec::*;
+mod const_proto_bitvec_iter;
+pub use const_proto_bitvec_iter::*;
+
+mod static_proto_bitvec;
+pub use static_proto_bitvec::*;
+mod static_proto_bitvec_iter;
+pub use static_proto_bitvec_iter::*;
+
+mod local_proto_bitvec;
+pub use local_proto_bitvec::*;
+mod local_proto_bitvec_iter;
+pub use local_proto_bitvec_iter::*;
+
 mod typed_bitvec;
 pub use typed_bitvec::*;
-
-mod bitvec_elem;
-pub use bitvec_elem::*;
+mod typed_bitvec_iter;
+pub use typed_bitvec_iter::*;
+mod typed_bitvec_elem;
+pub use typed_bitvec_elem::*;
 
 mod utils;
 pub(crate) use utils::*;
 
 #[cfg(test)]
-mod raw_bitvec_test;
+mod bitvec_test;
 
 
 

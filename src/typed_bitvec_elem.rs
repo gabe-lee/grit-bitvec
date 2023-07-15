@@ -1,11 +1,12 @@
 use crate::{
-    BitUtil,
+    BitUtil, 
+    BitProto
 };
 
-pub unsafe trait BitElem {
+
+pub unsafe trait TypedBitElem {
     type Base;
-    const BITS: usize;
-    const MASK: usize = (1 << Self::BITS) - 1;
+    const PROTO: BitProto;
     fn bits_to_val(bits: usize) -> Self::Base;
     fn val_to_bits(val: Self::Base) -> usize;
 }
@@ -14,21 +15,24 @@ macro_rules! impl_bitelem_unsigned {
     ($(($BASE:ty, $TYPE:ident, $BITS:expr)),+) => {$(
         #[allow(non_camel_case_types)]
         pub struct $TYPE;
-        unsafe impl BitElem for $TYPE {
+        unsafe impl TypedBitElem for $TYPE {
             type Base = $BASE;
-            const BITS: usize = $BITS;
+            const PROTO: BitProto = BitProto::create($BITS);
             #[inline(always)]
             fn bits_to_val(bits: usize) -> Self::Base {
                 bits as Self::Base
             }
             #[inline(always)]
             fn val_to_bits(val: Self::Base) -> usize {
-                (val as usize) & Self::MASK
+                (val as usize) & Self::PROTO.MASK
             }
         }
         impl $TYPE {
             pub const MIN: $BASE = 0;
-            pub const MAX: $BASE = (1 << Self::BITS) - 1;
+            pub const MAX: $BASE = (1 << Self::PROTO.BITS) - 1;
+            pub fn clamp_val(val: <$TYPE as TypedBitElem>::Base) -> <$TYPE as TypedBitElem>::Base {
+                Self::MAX.min(val)
+            }
         }
     )+};
 }
@@ -36,9 +40,9 @@ macro_rules! impl_bitelem_signed {
     ($(($BASE:ty, $TYPE:ident, $BITS:expr)),+) => {$(
         #[allow(non_camel_case_types)]
         pub struct $TYPE;
-        unsafe impl BitElem for $TYPE {
+        unsafe impl TypedBitElem for $TYPE {
             type Base = $BASE;
-            const BITS: usize = $BITS;
+            const PROTO: BitProto = BitProto::create($BITS);
             #[inline(always)]
             fn bits_to_val(bits: usize) -> Self::Base {
                 BitUtil::smear_neg_bit_left(bits, Self::TOP_BIT) as Self::Base
@@ -46,22 +50,25 @@ macro_rules! impl_bitelem_signed {
             #[inline(always)]
             fn val_to_bits(val: Self::Base) -> usize {
                 let mut neg_bit = (val & Self::Base::MIN) as usize;
-                neg_bit >>= Self::Base::BITS as usize - Self::BITS;
-                (neg_bit | (val as usize)) & Self::MASK
+                neg_bit >>= Self::Base::BITS as usize - Self::PROTO.BITS;
+                (neg_bit | (val as usize)) & Self::PROTO.MASK
             }
         }
         impl $TYPE {
-            pub(crate) const TOP_BIT: usize = 1 << (Self::BITS - 1);
+            pub(crate) const TOP_BIT: usize = 1 << (Self::PROTO.BITS - 1);
             pub const MIN: $BASE = -(Self::TOP_BIT as $BASE);
             pub const MAX: $BASE = (Self::TOP_BIT - 1) as $BASE;
+            pub fn clamp_val(val: <$TYPE as TypedBitElem>::Base) -> <$TYPE as TypedBitElem>::Base {
+                Self::MIN.max(Self::MAX.min(val))
+            }
         }
     )+};
 }
 
 #[cfg(feature="small_int_impls")]
-unsafe impl BitElem for bool {
+unsafe impl TypedBitElem for bool {
     type Base = bool;
-    const BITS: usize = 1;
+    const PROTO: BitProto = BitProto::create(1);
     #[inline(always)]
     fn bits_to_val(bits: usize) -> Self::Base {
         (bits & 1) == 1
@@ -209,39 +216,3 @@ impl_bitelem_signed!(
     (i64, i64_as_i62, 62),
     (i64, i64_as_i63, 63)
 );
-
-#[derive(Clone, Copy, Debug)]
-pub enum Grow {
-    Exact,
-    ExactPlus(usize),
-    OnePointFive,
-    Double,
-}
-
-impl Default for Grow {
-    fn default() -> Self {
-        Self::OnePointFive
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Shrink {
-    Minimum,
-    SubtractOrMinimum(usize),
-    SubtractTruncate(usize),
-    ThreeQuartersOrMinimum,
-    ThreeQuartersTruncate,
-    HalfOrMinimum,
-    HalfTruncate
-}
-
-impl Default for Shrink {
-    fn default() -> Self {
-        Self::ThreeQuartersOrMinimum
-    }
-}
-
-pub enum ElementCount {
-    Total(usize),
-    Additional(usize),
-}

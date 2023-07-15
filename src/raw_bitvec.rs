@@ -1,9 +1,4 @@
-use std::{ops::RangeBounds, alloc::handle_alloc_error};
-
 use crate::{
-    mem,
-    align_of,
-    size_of,
     ptr,
     NonNull,
     alloc,
@@ -11,86 +6,96 @@ use crate::{
     BitUtil,
     RawBitVecIter,
     RawBitVecDrain,
-    utils::RangeUtil, IdxProxy, IdxProxyRange
+    IdxProxy,
+    BitProto,
+    MemUtil,
+    Range,
+    ManuallyDrop,
+    handle_alloc_error
 };
 
-pub struct RawBitVec<const BIT_WIDTH: usize> {
+/// ## `RawBitVec`: "Raw Bitwise Vector"  
+/// A `BitVec` where the bit-width and masking data ([`BitProto`]) must be manually passed to every function that accesses
+/// any element or reallocates the underlying memory. 
+/// 
+/// ## Safety
+/// The [`BitProto`] passed to the methods of any given instance of [`RawBitVec`] ***MUST*** be exactly the same as the very first one
+/// pased to ***ANY*** of its methods that require it. For example, if you create a new instance with `RawBitVec::new()`,
+/// no assumptions are made about the data within and any [`BitProto`] is valid. However, if you then use `RawBitVec::push(PROTO_3_BITS, 5)`,
+/// you ***MUST*** pass `PROTO_3_BITS` for every other method call on this *specific instance* that requires a [`BitProto`], for its entire lifetime.
+/// 
+/// ### Pros
+/// - Same stack-size as [`Vec`] (3 usize)
+/// - Allows for constant-propogation optimizations (IF [`BitProto`] supplied to its methods is a constant)
+/// - No mono-morphization (smaller binary)
+/// - Can store [`RawBitVec`]'s in a homogenous collection (`Array`, [`Vec`], [`HashMap`](std::collections::HashMap), etc.)
+/// 
+/// ### Cons
+/// - UNSAFE if the same [`BitProto`] isnt used for every method call on the same instance of a [`RawBitVec`]
+/// - Clunky API (requires manually passing an extra variable and nearly all methods are unsafe)
+/// - Cannot truly implement many traits because their signatures don't allow for a [`BitProto`] to be passed
+///     - Simple psuedo-iterators are provided that *do* require the same [`BitProto`] to be passed
+pub struct RawBitVec {
     pub(crate) ptr: NonNull<usize>,
     pub(crate) len: usize,
-    pub(crate) cap: usize,
+    pub(crate) true_cap: usize,
 }
 
-impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
-
+impl RawBitVec {
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
     #[inline]
-    pub fn cap(&self) -> usize {
-        self.cap
+    pub unsafe fn cap(&self, proto: BitProto) -> usize {
+        BitProto::calc_bitwise_count_from_block_count(proto, self.true_cap)
     }
 
     #[inline]
-    pub fn free(&self) -> usize {
-        self.cap - self.len
+    pub unsafe fn free(&self, proto: BitProto) -> usize {
+        self.cap(proto) - self.len
     }
 
     #[inline]
     pub fn new() -> Self {
-        if BIT_WIDTH > 0 {
-            Self {
-                ptr: NonNull::dangling(),
-                cap: 0,
-                len: 0,
-            }
-        } else {
-            Self {
-                ptr: NonNull::dangling(),
-                cap: usize::MAX,
-                len: 0,
-            }
+        Self {
+            ptr: NonNull::dangling(),
+            len: 0,
+            true_cap: 0
         }
     }
 
     #[inline]
-    pub fn with_capacity(cap: usize) -> Self {
-        if BIT_WIDTH > 0 {
-            let mut new_vec = Self::new();
-            let real_cap = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(cap);
-            let (new_ptr, new_layout) = unsafe {Self::alloc_new(real_cap)};
-            let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
-            new_vec.cap = IdxProxy::<BIT_WIDTH>::calc_bitwise_count_from_real_count(real_cap);
-            new_vec.ptr = new_non_null;
-            new_vec
-        } else {
-            Self {
-                ptr: NonNull::dangling(),
-                cap: usize::MAX,
-                len: 0,
-            }
-        }
+    pub fn with_capacity(proto: BitProto, cap: usize) -> Self {
+        let mut new_vec = Self::new();
+        let block_cap = BitProto::calc_block_count_from_bitwise_count(proto, cap);
+        let (new_ptr, new_layout) = unsafe {Self::alloc_new(block_cap)};
+        let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
+        // new_vec.cap = BitProto::calc_bitwise_count_from_block_count(proto, block_cap);
+        new_vec.ptr = new_non_null;
+        new_vec.true_cap = block_cap;
+        new_vec
     }
 
     #[inline]
-    pub fn grow_exact_for_additional_elements_if_needed(&mut self, extra_elements: usize) -> Result<(), String> {
-        unsafe {self.handle_grow_if_needed(self.len + extra_elements, false)}
+    pub unsafe fn grow_exact_for_additional_elements_if_needed(&mut self, proto: BitProto, extra_elements: usize) -> Result<(), String> {
+        self.handle_grow_if_needed(proto, self.len + extra_elements, false)
     }
 
     #[inline]
-    pub fn grow_exact_for_total_elements_if_needed(&mut self, total_elements: usize) -> Result<(), String> {
-        unsafe {self.handle_grow_if_needed(total_elements, false)}
+    pub unsafe fn grow_exact_for_total_elements_if_needed(&mut self, proto: BitProto, total_elements: usize) -> Result<(), String> {
+        self.handle_grow_if_needed(proto, total_elements, false)
     }
 
     #[inline]
-    pub fn grow_for_additional_elements_if_needed(&mut self, extra_elements: usize) -> Result<(), String> {
-        unsafe {self.handle_grow_if_needed(self.len + extra_elements, true)}
+    pub unsafe fn grow_for_additional_elements_if_needed(&mut self, proto: BitProto, extra_elements: usize) -> Result<(), String> {
+        self.handle_grow_if_needed(proto, self.len + extra_elements, true)
     }
 
     #[inline]
-    pub fn grow_for_total_elements_if_needed(&mut self, total_elements: usize) -> Result<(), String> {
-        unsafe {self.handle_grow_if_needed(total_elements, true)}
+    pub unsafe fn grow_for_total_elements_if_needed(&mut self, proto: BitProto, total_elements: usize) -> Result<(), String> {
+        self.handle_grow_if_needed(proto, total_elements, true)
     }
 
     #[inline]
@@ -99,380 +104,298 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     }
 
     #[inline]
-    pub fn push(&mut self, val: usize) -> Result<(), String> {
-        match self.len == IdxProxy::<BIT_WIDTH>::MAX_CAPACITY {
-            true => Err(format!("BitVec is at maximum capacity ({})", IdxProxy::<BIT_WIDTH>::MAX_CAPACITY)),
-            false => unsafe {
-                self.handle_grow_if_needed(self.len+1, true)?;
-                self.push_unchecked(val);
+    pub unsafe fn push(&mut self, proto: BitProto, val: usize) -> Result<(), String> {
+        match self.len == proto.MAX_CAPACITY {
+            true => Err(format!("BitVec is at maximum capacity ({})", proto.MAX_CAPACITY)),
+            false => {
+                self.handle_grow_if_needed(proto, self.len+1, true)?;
+                self.push_unchecked(proto, val);
                 Ok(())
             }
         }
     }
 
     #[inline]
-    pub unsafe fn push_unchecked(&mut self, val: usize) {
-        if BIT_WIDTH > 0 {
-            let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-            #[cfg(test)]
-            self.clean_new_blocks_if_needed(len_proxy, 1);
-            self.write_val_with_idx_proxy(len_proxy, val);
-        }
+    pub unsafe fn push_unchecked(&mut self, proto: BitProto, val: usize) {
+        let len_proxy = BitProto::idx_proxy(proto, self.len);
+        self.write_val_with_idx_proxy(len_proxy, val);
         self.len += 1;
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Result<usize, String> {
+    pub unsafe fn pop(&mut self, proto: BitProto) -> Result<usize, String> {
         if self.len == 0 {
             Err(format!("no elements in BitVec to pop out"))
         } else {
-            Ok(unsafe{self.pop_unchecked()})
+            Ok(self.pop_unchecked(proto))
         }
     }
 
     #[inline]
-    pub unsafe fn pop_unchecked(&mut self) -> usize {
+    pub unsafe fn pop_unchecked(&mut self, proto: BitProto) -> usize {
         self.len -= 1;
-        if BIT_WIDTH > 0 {
-            let last_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-            self.replace_val_with_idx_proxy(last_proxy, 0)
-        } else {
-            0
-        }
+        let last_proxy = BitProto::idx_proxy(proto, self.len);
+        self.replace_val_with_idx_proxy(last_proxy, 0)
     }
 
     #[inline]
-    pub fn insert(&mut self, idx: usize, val: usize) -> Result<(), String> {
+    pub unsafe fn insert(&mut self, proto: BitProto, idx: usize, val: usize) -> Result<(), String> {
         if idx > self.len {
             return Err(format!("index out of bounds for insert: (idx) {} > {} (len)", idx, self.len));
         }
-        if self.len == IdxProxy::<BIT_WIDTH>::MAX_CAPACITY {
-            return Err(format!("BitVec is at maximum capacity ({})", IdxProxy::<BIT_WIDTH>::MAX_CAPACITY));
+        if self.len == proto.MAX_CAPACITY {
+            return Err(format!("BitVec is at maximum capacity ({})", proto.MAX_CAPACITY));
         }
-        unsafe {
-            self.handle_grow_if_needed(self.len+1, true)?;
-            match idx == self.len {
-                true => Ok(self.push_unchecked(val)),
-                false => Ok(self.insert_unchecked(idx, val))
-            }
+        self.handle_grow_if_needed(proto, self.len+1, true)?;
+        match idx == self.len {
+            true => Ok(self.push_unchecked(proto, val)),
+            false => Ok(self.insert_unchecked(proto, idx, val))
         }
     }
 
     #[inline]
-    pub unsafe fn insert_unchecked(&mut self, idx: usize, val: usize) {
-        if BIT_WIDTH > 0 {
-            let idx_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
-            #[cfg(test)]
-            let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-            #[cfg(test)]
-            self.clean_new_blocks_if_needed(len_proxy, 1);
-            self.shift_elements_up_with_with_idx_proxy(idx_proxy, 1);
-            self.write_val_with_idx_proxy(idx_proxy, val);
-        }
+    pub unsafe fn insert_unchecked(&mut self, proto: BitProto, idx: usize, val: usize) {
+        let idx_proxy = BitProto::idx_proxy(proto, idx);
+        self.shift_elements_up_with_with_idx_proxy(proto, idx_proxy, 1);
+        self.write_val_with_idx_proxy(idx_proxy, val);
         self.len += 1;
     }
 
-    pub fn insert_bitvec(&mut self, insert_idx: usize, bitvec: Self) -> Result<(), String> {
+    #[inline]
+    pub unsafe fn insert_bitvec(&mut self, proto: BitProto, insert_idx: usize, bitvec: Self) -> Result<(), String> {
         if insert_idx > self.len {
             return Err(format!("index out of bounds for insert_bitvec: (idx) {} > {} (len)", insert_idx, self.len));
         }
-        if IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - bitvec.len < self.len {
-            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", bitvec.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - self.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY));
+        if proto.MAX_CAPACITY - bitvec.len < self.len {
+            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", bitvec.len, proto.MAX_CAPACITY - self.len, proto.MAX_CAPACITY));
         }
-        unsafe {
-            self.handle_grow_if_needed(self.len + bitvec.len, true)?;
-            match insert_idx == self.len {
-                true => todo!(),
-                false => self.insert_bitvec_unchecked(insert_idx, bitvec)
-            }
+        self.handle_grow_if_needed(proto, self.len + bitvec.len, true)?;
+        match insert_idx == self.len {
+            true => self.append_bitvec_unchecked(proto, bitvec),
+            false => self.insert_bitvec_unchecked(proto, insert_idx, bitvec)
         }
         Ok(())
     }
 
-    pub fn insert_bitvec_unchecked(&mut self, insert_idx: usize, bitvec: Self) {
-        let mut write_iter = IdxProxyRange::<BIT_WIDTH>::from(insert_idx..insert_idx+bitvec.len);
-        let mut read_iter = IdxProxyRange::<BIT_WIDTH>::from(0..bitvec.len);
-        let mut count = bitvec.len;
-        let begin_idx = IdxProxy::<BIT_WIDTH>::from(insert_idx);
-        #[cfg(test)]
-        let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-        unsafe {
-            #[cfg(test)]
-            self.clean_new_blocks_if_needed(len_proxy, count);
-            self.shift_elements_up_with_with_idx_proxy(begin_idx, count);
-            while count > 0 {
-                    let write_idx = write_iter.next().unwrap();
-                    let read_idx = read_iter.next().unwrap();
-                    let val = bitvec.read_val_with_idx_proxy(read_idx);
-                    self.write_val_with_idx_proxy(write_idx, val);
-                    count -= 1;
-            }
+    #[inline]
+    pub unsafe fn insert_bitvec_unchecked(&mut self, proto: BitProto, insert_idx: usize, bitvec: Self) {
+        let mut count: usize = 0;
+        let begin_idx = BitProto::idx_proxy(proto, insert_idx);
+        self.shift_elements_up_with_with_idx_proxy(proto, begin_idx, count);
+        while count < bitvec.len {
+            let write_proxy = BitProto::idx_proxy(proto, insert_idx+count);
+            let read_proxy = BitProto::idx_proxy(proto, count);
+            let val = bitvec.read_val_with_idx_proxy(read_proxy);
+            self.write_val_with_idx_proxy(write_proxy, val);
+            count += 1;
         }
     }
 
     #[inline]
-    pub fn remove(&mut self, idx: usize) -> Result<usize, String> {
+    pub unsafe fn remove(&mut self, proto: BitProto, idx: usize) -> Result<usize, String> {
         match idx >= self.len {
             true => Err(format!("index out of bounds for remove: (idx) {} >= {} (len)", idx, self.len)),
-            false => {
-                if idx == self.len - 1 {
-                    Ok(unsafe{self.pop_unchecked()})
-                } else {
-                    Ok(unsafe{self.remove_unchecked(idx)})
-                }
+            false =>  match idx == self.len - 1 {
+                true => Ok(self.pop_unchecked(proto)),
+                false => Ok(self.remove_unchecked(proto, idx))
             },
         }
     }
 
     #[inline]
-    pub unsafe fn remove_unchecked(&mut self, idx: usize) -> usize {
+    pub unsafe fn remove_unchecked(&mut self, proto: BitProto, idx: usize) -> usize {
         self.len -= 1;
-        if BIT_WIDTH > 0 {
-            let idx_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
-            let shift_proxy = IdxProxy::<BIT_WIDTH>::from(idx+1);
+        let idx_proxy = BitProto::idx_proxy(proto, idx);
+        let shift_proxy = BitProto::idx_proxy(proto, idx+1);
+        let val = self.replace_val_with_idx_proxy(idx_proxy, 0);
+        self.shift_elements_down_with_with_idx_proxy(proto, idx_proxy, shift_proxy, 1);
+        val
+    }
+
+    #[inline]
+    pub unsafe fn remove_range(&mut self, proto: BitProto, idx_range: Range<usize>) -> Result<Self, String> {
+        match idx_range.end > self.len {
+            true => Err(format!("index out of bounds for remove range: (idx) {} >= {} (len)", idx_range.end - 1, self.len)),
+            false => Ok(self.remove_range_unchecked(proto, idx_range))
+        }
+    }
+
+    #[inline]
+    pub unsafe fn remove_range_unchecked(&mut self, proto: BitProto, idx_range: Range<usize>) -> Self {
+        let count = idx_range.len();
+        let mut new_vec = Self::with_capacity(proto, count);
+        let start_proxy = BitProto::idx_proxy(proto, idx_range.start);
+        let end_excluded_proxy = BitProto::idx_proxy(proto, idx_range.end);
+        for idx in idx_range {
+            let idx_proxy = BitProto::idx_proxy(proto, idx);
             let val = self.replace_val_with_idx_proxy(idx_proxy, 0);
-            self.shift_elements_down_with_with_idx_proxy(idx_proxy, shift_proxy, 1);
-            val
-        } else {
-            0
+            new_vec.push_unchecked(proto, val);
         }
-    }
-
-    #[inline]
-    pub fn remove_range(&mut self, idx_range: IdxProxyRange<BIT_WIDTH>) -> Result<Self, String> {
-        match idx_range.end_excluded > self.len {
-            true => Err(format!("index out of bounds for remove range: (idx) {} >= {} (len)", idx_range.end_excluded-1, self.len)),
-            false => {
-                Ok(unsafe {self.remove_range_unchecked(idx_range)})
-            },
+        if end_excluded_proxy.bitwise_idx < self.len {
+            self.shift_elements_down_with_with_idx_proxy(proto, start_proxy, end_excluded_proxy, count);
         }
-    }
-
-    #[inline]
-    pub unsafe fn remove_range_unchecked(&mut self, idx_range: IdxProxyRange<BIT_WIDTH>) -> Self {
-        let new_cap = idx_range.len();
-        let mut new_vec = Self::with_capacity(new_cap);
-        if BIT_WIDTH > 0 {
-            let start_proxy = IdxProxy::<BIT_WIDTH>::from(idx_range.start);
-            let end_excluded_proxy = IdxProxy::<BIT_WIDTH>::from(idx_range.end_excluded);
-            let count = idx_range.len();            
-            for idx_proxy in idx_range {
-                let val = self.replace_val_with_idx_proxy(idx_proxy, 0);
-                new_vec.push_unchecked(val);
-            }
-            if end_excluded_proxy.bitwise_idx < self.len {
-                self.shift_elements_down_with_with_idx_proxy(start_proxy, end_excluded_proxy, count);
-            }
-            self.len -= count;
-        } else {
-            let count =idx_range.len();
-            new_vec.len = count;
-            self.len -= count;
-        }
+        self.len -= count;
         new_vec
     }
 
     #[inline]
-    pub fn swap(&mut self, idx_a: usize, idx_b: usize) -> Result<(), String> {
+    pub unsafe fn swap(&mut self, proto: BitProto, idx_a: usize, idx_b: usize) -> Result<(), String> {
         if idx_a >= self.len || idx_b >= self.len {
             return Err(format!("index out of bounds for swap: (idx_a) {} >= {} (len) OR (idx_b) {} >= {} (len)", idx_a, self.len, idx_b, self.len))
         } else if idx_a != idx_b {
-            unsafe {self.swap_unchecked(idx_a, idx_b)};
+            self.swap_unchecked(proto, idx_a, idx_b);
         }
         Ok(())
     }
 
     #[inline]
-    pub unsafe fn swap_unchecked(&mut self, idx_a: usize, idx_b: usize) {
-        if BIT_WIDTH > 0 {
-            let proxy_a = IdxProxy::<BIT_WIDTH>::from(idx_a);
-            let proxy_b = IdxProxy::<BIT_WIDTH>::from(idx_b);
-            self.swap_vals_with_idx_proxy(proxy_a, proxy_b)
-        }
-    }
+    pub unsafe fn swap_unchecked(&mut self, proto: BitProto, idx_a: usize, idx_b: usize) {
+        let proxy_a = BitProto::idx_proxy(proto, idx_a);
+        let proxy_b = BitProto::idx_proxy(proto, idx_b);
+        self.swap_vals_with_idx_proxy(proxy_a, proxy_b)
+}
 
     #[inline]
-    pub fn swap_pop(&mut self, idx: usize) -> Result<usize, String> {
+    pub unsafe fn swap_pop(&mut self, proto: BitProto, idx: usize) -> Result<usize, String> {
         if idx >= self.len {
-            Err(format!("index out of bounds for swap pop: (idx) {} >= {} (len)", idx, self.len))
+            Err(format!("index out of bounds for swap_pop: (idx) {} >= {} (len)", idx, self.len))
         } else if idx == self.len - 1 {
-            Ok(unsafe{self.pop_unchecked()})
+            Ok(self.pop_unchecked(proto))
         } else {
-            Ok(unsafe {self.swap_pop_unchecked(idx)})
+            Ok(self.swap_pop_unchecked(proto, idx))
         }
     }
 
     #[inline]
-    pub unsafe fn swap_pop_unchecked(&mut self, idx: usize) -> usize {
+    pub unsafe fn swap_pop_unchecked(&mut self, proto: BitProto, idx: usize) -> usize {
         self.len -= 1;
-        if BIT_WIDTH > 0 {
-            let last_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-            let pop_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
-            self.swap_pop_val_with_idx_proxy(pop_proxy, last_proxy)
-        } else {
-            0
+        let last_proxy = BitProto::idx_proxy(proto, self.len);
+        let pop_proxy = BitProto::idx_proxy(proto, idx);
+        self.swap_pop_val_with_idx_proxy(pop_proxy, last_proxy)
+    }
+
+    #[inline]
+    pub unsafe fn trim_excess_capacity(&mut self, proto: BitProto, extra_capacity_to_keep: usize) -> Result<(), String> {
+        let target_capacity = self.len.saturating_add(extra_capacity_to_keep);
+        if target_capacity < self.cap(proto) {
+            let target_block_capacity = BitProto::calc_block_count_from_bitwise_count(proto, target_capacity);
+            let new_layout = MemUtil::usize_array_layout(target_block_capacity);
+            let old_layout = MemUtil::usize_array_layout(self.true_cap);
+            let new_ptr = alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size());
+            let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
+            self.true_cap = target_block_capacity;
+            self.ptr = new_non_null;
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn append_bitvec(&mut self, proto: BitProto, bitvec: Self) -> Result<(), String> {
+        if proto.MAX_CAPACITY - bitvec.len < self.len {
+            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", bitvec.len, proto.MAX_CAPACITY - self.len, proto.MAX_CAPACITY));
+        }
+        self.handle_grow_if_needed(proto, self.len + bitvec.len, true)?;
+        self.append_bitvec_unchecked(proto, bitvec);
+        Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn append_bitvec_unchecked(&mut self, proto: BitProto, bitvec: Self) {
+        let mut count = 0;
+        while count < bitvec.len {
+                let write_proxy = BitProto::idx_proxy(proto, self.len+count);
+                let read_proxy = BitProto::idx_proxy(proto, count);
+                let val = bitvec.read_val_with_idx_proxy(read_proxy);
+                self.write_val_with_idx_proxy(write_proxy, val);
+                count += 1;
         }
     }
 
     #[inline]
-    pub fn trim_excess_capacity(&mut self, extra_capacity_to_keep: usize) -> Result<(), String> {
-        if BIT_WIDTH > 0 {
-            let target_capacity = self.len.saturating_add(extra_capacity_to_keep);
-            if target_capacity < self.cap {
-                unsafe {
-                    let target_real_capacity = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(target_capacity);
-                    let current_real_capacity = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.cap);
-                    let new_layout: Layout = Layout::from_size_align_unchecked(target_real_capacity*size_of::<usize>(), align_of::<usize>());
-                    let old_layout = Layout::from_size_align_unchecked(current_real_capacity*size_of::<usize>(), align_of::<usize>());
-                    let new_ptr = alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size());
-                    let new_bitwise_capacity = IdxProxy::<BIT_WIDTH>::calc_bitwise_count_from_real_count(target_real_capacity);
-                    let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
-                    self.cap = new_bitwise_capacity;
-                    self.ptr = new_non_null;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn append_bitvec(&mut self, bitvec: Self) -> Result<(), String> {
-        if IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - bitvec.len < self.len {
-            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", bitvec.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - self.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY));
-        }
-        unsafe {
-            self.handle_grow_if_needed(self.len + bitvec.len, true)?;
-            self.append_bitvec_unchecked(bitvec);
-        }
-        Ok(())
-    }
-
-    pub fn append_bitvec_unchecked(&mut self, bitvec: Self) {
-        if BIT_WIDTH > 0 {
-            let mut write_iter = IdxProxyRange::<BIT_WIDTH>::from(self.len..self.len+bitvec.len);
-            let mut read_iter = IdxProxyRange::<BIT_WIDTH>::from(0..bitvec.len);
-            let mut count = bitvec.len;
-            #[cfg(test)]
-            let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-            unsafe {
-                #[cfg(test)]
-                self.clean_new_blocks_if_needed(len_proxy, count);
-                while count > 0 {
-                        let write_idx = write_iter.next().unwrap();
-                        let read_idx = read_iter.next().unwrap();
-                        let val = bitvec.read_val_with_idx_proxy(read_idx);
-                        self.write_val_with_idx_proxy(write_idx, val);
-                        count -= 1;
-                }
-            }
-        } else {
-            self.len += bitvec.len
-        }
-    }
-
-    pub fn append_iter<II, TO, ESI>(&mut self, source: II) -> Result<(), String>
+    pub unsafe fn append_iter<II, TO, ESI>(&mut self, proto: BitProto, source: II) -> Result<(), String>
     where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
         let iter = source.into_iter();
-        if IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - iter.len() < self.len {
-            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", iter.len(), IdxProxy::<BIT_WIDTH>::MAX_CAPACITY - self.len, IdxProxy::<BIT_WIDTH>::MAX_CAPACITY));
+        if proto.MAX_CAPACITY - iter.len() < self.len {
+            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", iter.len(), proto.MAX_CAPACITY - self.len, proto.MAX_CAPACITY));
         }
-        unsafe {
-            self.handle_grow_if_needed(self.len + iter.len(), true)?;
-            self.append_iter_unchecked(iter);
-        }
+        self.handle_grow_if_needed(proto, self.len + iter.len(), true)?;
+        self.append_iter_unchecked(proto, iter);
         Ok(())
     }
 
-    pub fn append_iter_unchecked<I, TO>(&mut self, mut iter: I)
+    #[inline]
+    pub unsafe fn append_iter_unchecked<I, TO>(&mut self, proto: BitProto, iter: I)
     where I: Iterator<Item = TO> + ExactSizeIterator, TO: ToOwned<Owned = usize> {
-        let mut count = iter.len();
-        #[cfg(test)]
-        let len_proxy = IdxProxy::<BIT_WIDTH>::from(self.len);
-        unsafe {
-            #[cfg(test)]
-            self.clean_new_blocks_if_needed(len_proxy, count);
-            while count > 0 {
-                    let val = iter.next().unwrap().to_owned();
-                    self.push_unchecked(val);
-                    count -= 1;
-            }
+        for val in iter {
+            self.push_unchecked(proto, val.to_owned())
         }
     }
 
     #[inline]
-    pub fn get(&self, idx: usize) -> Result<usize, String> {
-        if idx < self.len {
-            Ok(unsafe{self.get_unchecked(idx)})
-        } else {
-            Err(format!("index out of bounds for get_val: (idx) {} >= {} (len)", idx, self.len))
+    pub unsafe fn get(&self, proto: BitProto, idx: usize) -> Result<usize, String> {
+        match idx < self.len {
+            true => Ok(self.get_unchecked(proto, idx)),
+            false => Err(format!("index out of bounds for get: (idx) {} >= {} (len)", idx, self.len))
         }
     }
 
     #[inline]
-    pub unsafe fn get_unchecked(&self, idx: usize) -> usize {
-        if BIT_WIDTH > 0 {
-            let idx_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
-            self.read_val_with_idx_proxy(idx_proxy)
-        } else {
-            0
+    pub unsafe fn get_unchecked(&self, proto: BitProto, idx: usize) -> usize {
+        let idx_proxy = BitProto::idx_proxy(proto, idx);
+        self.read_val_with_idx_proxy(idx_proxy)
+    }
+
+    #[inline]
+    pub unsafe fn replace(&mut self, proto: BitProto, idx: usize, val: usize) -> Result<usize, String> {
+        match idx < self.len {
+            true => Ok(self.replace_unchecked(proto, idx, val)),
+            false => Err(format!("index out of bounds for replace: (idx) {} >= {} (len)", idx, self.len))
         }
     }
 
     #[inline]
-    pub fn replace(&mut self, idx: usize, val: usize) -> Result<usize, String> {
-        if idx < self.len {
-            Ok(unsafe{self.replace_unchecked(idx, val)})
-        } else {
-            Err(format!("index out of bounds for replace: (idx) {} >= {} (len)", idx, self.len))
+    pub unsafe fn replace_unchecked(&mut self, proto: BitProto, idx: usize, val: usize) -> usize {
+        let idx_proxy = BitProto::idx_proxy(proto, idx);
+        self.replace_val_with_idx_proxy(idx_proxy, val)
+    }
+
+    #[inline]
+    pub unsafe fn set(&mut self, proto: BitProto, idx: usize, val: usize) -> Result<(), String> {
+        match idx < self.len {
+            true => Ok(self.set_unchecked(proto, idx, val)),
+            false => Err(format!("index out of bounds for set: (idx) {} >= {} (len)", idx, self.len))
         }
     }
 
     #[inline]
-    pub unsafe fn replace_unchecked(&mut self, idx: usize, val: usize) -> usize {
-        if BIT_WIDTH > 0 {
-            let idx_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
-            self.replace_val_with_idx_proxy(idx_proxy, val)
-        } else {
-            0
-        }
+    pub unsafe fn set_unchecked(&mut self, proto: BitProto, idx: usize, val: usize) {
+        let idx_proxy = BitProto::idx_proxy(proto, idx);
+        self.write_val_with_idx_proxy(idx_proxy, val);
     }
 
     #[inline]
-    pub fn set(&mut self, idx: usize, val: usize) -> Result<(), String> {
-        if idx < self.len {
-            unsafe{self.set_unchecked(idx, val)};
-            Ok(())
-        } else {
-            Err(format!("index out of bounds for set: (idx) {} >= {} (len)", idx, self.len))
-        }
-    }
-
-    #[inline]
-    pub unsafe fn set_unchecked(&mut self, idx: usize, val: usize) {
-        if BIT_WIDTH > 0 {
-            let idx_proxy = IdxProxy::<BIT_WIDTH>::from(idx);
-            self.write_val_with_idx_proxy(idx_proxy, val);
-        }
-    }
-
-    #[inline(always)]
-    pub fn drain<'vec>(&'vec mut self) -> RawBitVecDrain<'vec, BIT_WIDTH> {
-        self.drain_range(..)
-    }
-
-    #[inline]
-    pub fn drain_range<'vec, RB: RangeBounds<usize>>(&'vec mut self, range: RB) -> RawBitVecDrain<'vec, BIT_WIDTH> {
-        let true_range = RangeUtil::get_real_bounds_for_veclike(range, self.len);
+    pub fn drain<'vec>(&'vec mut self) -> RawBitVecDrain<'vec> {
+        let len = self.len;
         RawBitVecDrain {
             vec: self,
-            start: true_range.start,
-            end_excluded: true_range.end,
-            begin_idx: true_range.start,
-            shift_idx: true_range.end
+            start: 0,
+            end_excluded: len,
         }
     }
 
     #[inline]
-    pub(crate) unsafe fn read_val_with_idx_proxy(&self, idx_proxy: IdxProxy<BIT_WIDTH>) -> usize {
+    pub fn into_iter(self) -> RawBitVecIter {
+        let nodrop_self = ManuallyDrop::new(self);
+        RawBitVecIter{
+            ptr: nodrop_self.ptr,
+            true_cap: nodrop_self.true_cap,
+            start: 0,
+            end_excluded: nodrop_self.len,
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn read_val_with_idx_proxy(&self, idx_proxy: IdxProxy) -> usize {
         let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
         let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
@@ -485,7 +408,7 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     }
 
     #[inline]
-    pub(crate) unsafe fn replace_val_with_idx_proxy(&mut self, idx_proxy: IdxProxy<BIT_WIDTH>, new_val: usize) -> usize {
+    pub(crate) unsafe fn replace_val_with_idx_proxy(&mut self, idx_proxy: IdxProxy, new_val: usize) -> usize {
         let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
         let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
@@ -501,35 +424,22 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         val
     }
 
-    #[cfg(test)]
-    pub(crate) unsafe fn clean_new_blocks_if_needed(&mut self, len_proxy: IdxProxy<BIT_WIDTH>, added_elements: usize) {
-        let final_proxy = IdxProxy::<BIT_WIDTH>::from(len_proxy.bitwise_idx + added_elements);
-        let len_block_needs_clean = (len_proxy.first_offset == 0) as usize;
-        let final_block_does_not_need_clean = (final_proxy.first_offset == 0) as usize;
-        let clean_block_count = len_block_needs_clean + (final_proxy.real_idx - len_proxy.real_idx - final_block_does_not_need_clean);
-        ptr::write_bytes(self.ptr.as_ptr().add(len_proxy.real_idx + 1 - len_block_needs_clean), 0, clean_block_count);
-    }
-
     #[inline]
-    pub(crate) unsafe fn write_val_with_idx_proxy(&mut self, idx_proxy: IdxProxy<BIT_WIDTH>, new_val: usize) {
+    pub(crate) unsafe fn write_val_with_idx_proxy(&mut self, idx_proxy: IdxProxy, new_val: usize) {
         let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
         block_bits = (block_bits & !idx_proxy.first_mask) | (new_val << idx_proxy.first_offset);
         ptr::write(block_ptr, block_bits);
         if idx_proxy.second_mask != 0 {
             block_ptr = block_ptr.add(1);
-            block_bits = if idx_proxy.second_offset < BIT_WIDTH {
-                0
-            } else {
-                ptr::read(block_ptr)
-            };
+            block_bits = ptr::read(block_ptr);
             block_bits = (block_bits & !idx_proxy.second_mask) | (new_val >> idx_proxy.second_offset);
             ptr::write(block_ptr, block_bits);
         }
     }
 
     #[inline]
-    pub(crate) unsafe fn swap_vals_with_idx_proxy(&mut self, proxy_a: IdxProxy<BIT_WIDTH>, proxy_b: IdxProxy<BIT_WIDTH>) {
+    pub(crate) unsafe fn swap_vals_with_idx_proxy(&mut self, proxy_a: IdxProxy, proxy_b: IdxProxy) {
         let val_a = self.replace_val_with_idx_proxy(proxy_a, 0);
         let val_b = self.replace_val_with_idx_proxy(proxy_b, 0);
         self.write_val_with_idx_proxy(proxy_a, val_b);
@@ -537,14 +447,14 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     }
 
     #[inline]
-    pub(crate) unsafe fn swap_pop_val_with_idx_proxy(&mut self, pop_proxy: IdxProxy<BIT_WIDTH>, last_proxy: IdxProxy<BIT_WIDTH>) -> usize {
+    pub(crate) unsafe fn swap_pop_val_with_idx_proxy(&mut self, pop_proxy: IdxProxy, last_proxy: IdxProxy) -> usize {
         let val_last = self.replace_val_with_idx_proxy(last_proxy, 0);
         self.replace_val_with_idx_proxy(pop_proxy, val_last)
     }
 
     #[inline]
-    pub(crate) unsafe fn shift_elements_up_with_with_idx_proxy(&mut self, begin_proxy: IdxProxy<BIT_WIDTH>, shift_count: usize) {
-        let new_real_len = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.len+shift_count);
+    pub(crate) unsafe fn shift_elements_up_with_with_idx_proxy(&mut self, proto: BitProto, begin_proxy: IdxProxy, shift_count: usize) {
+        let new_real_len = BitProto::calc_block_count_from_bitwise_count(proto, self.len+shift_count);
         let block_count = new_real_len - begin_proxy.real_idx;
         let mut block_ptr = self.ptr.as_ptr().add(begin_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
@@ -552,7 +462,7 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         let keep_first_bits = block_bits & keep_first_mask;
         block_bits &= !keep_first_mask;
         ptr::write(block_ptr, block_bits);
-        let total_bits_shifted = shift_count * BIT_WIDTH;
+        let total_bits_shifted = shift_count * proto.BITS;
         let whole_blocks = total_bits_shifted / BitUtil::USIZE_BITS;
         if whole_blocks > 0 {
             ptr::copy(block_ptr, block_ptr.add(whole_blocks), block_count);
@@ -581,8 +491,8 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     }
 
     #[inline]
-    pub(crate) unsafe fn shift_elements_down_with_with_idx_proxy(&mut self, begin_proxy: IdxProxy<BIT_WIDTH>, shift_proxy: IdxProxy<BIT_WIDTH>, shift_count: usize) {
-        let real_len = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.len);
+    pub(crate) unsafe fn shift_elements_down_with_with_idx_proxy(&mut self, proto: BitProto, begin_proxy: IdxProxy, shift_proxy: IdxProxy, shift_count: usize) {
+        let real_len = BitProto::calc_block_count_from_bitwise_count(proto, self.len);
         let block_count = real_len - shift_proxy.real_idx;
         let mut block_ptr = self.ptr.as_ptr().add(begin_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
@@ -590,7 +500,7 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
         let keep_first_bits = block_bits & keep_first_mask;
         block_bits &= !keep_first_mask;
         ptr::write(block_ptr, block_bits);
-        let total_bits_shifted = shift_count * BIT_WIDTH;
+        let total_bits_shifted = shift_count * proto.BITS;
         let whole_blocks = total_bits_shifted / BitUtil::USIZE_BITS;
         if whole_blocks > 0 {
             ptr::copy(block_ptr.add(whole_blocks), block_ptr, block_count);
@@ -619,81 +529,54 @@ impl<const BIT_WIDTH: usize> RawBitVec<BIT_WIDTH> {
     }
     
     #[inline]
-    pub(crate) unsafe fn handle_grow_if_needed(&mut self, min_capacity: usize, grow_exponential: bool) -> Result<(), String> {
-        if BIT_WIDTH > 0 {
-            if min_capacity > self.cap {
-                let new_cap = match grow_exponential {
-                    true => min_capacity.saturating_add(min_capacity >> 1),
-                    false => min_capacity,
-                };
-                let target_real_capacity = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(new_cap);
-                let current_real_capacity = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.cap);
-                let new_layout: Layout = Layout::from_size_align_unchecked(target_real_capacity*size_of::<usize>(), align_of::<usize>());
-                let new_ptr = match self.cap {
-                    0 => {
-                        alloc::alloc(new_layout)
-                    },
-                    _ => {
-                        let old_layout = Layout::from_size_align_unchecked(current_real_capacity*size_of::<usize>(), align_of::<usize>());
-                        alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size())
-                    },
-                };
-                let new_bitwise_capacity = IdxProxy::<BIT_WIDTH>::calc_bitwise_count_from_real_count(target_real_capacity);
-                let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
-                self.cap = new_bitwise_capacity;
-                self.ptr = new_non_null;
-                Ok(())
-            } else {
-                Ok(())
-            }
+    pub(crate) unsafe fn handle_grow_if_needed(&mut self, proto: BitProto, min_capacity: usize, grow_exponential: bool) -> Result<(), String> {
+        let true_min_capacity = BitProto::calc_block_count_from_bitwise_count(proto, min_capacity);
+        if true_min_capacity > self.true_cap{
+            let new_true_cap = match grow_exponential {
+                true => true_min_capacity.saturating_add(true_min_capacity >> 1),
+                false => true_min_capacity,
+            };
+            let new_layout: Layout = MemUtil::usize_array_layout(new_true_cap);
+            let new_ptr = match self.true_cap {
+                0 => {
+                    alloc::alloc(new_layout)
+                },
+                _ => {
+                    let old_layout = MemUtil::usize_array_layout(self.true_cap);
+                    alloc::realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size())
+                },
+            };
+            let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
+            self.true_cap = true_min_capacity;
+            self.ptr = new_non_null;
+            Ok(())
         } else {
             Ok(())
         }
     }
 
+    #[inline]
     pub(crate) unsafe fn alloc_new(real_cap: usize) -> (*mut u8, Layout) {
-        let new_layout: Layout = Layout::from_size_align_unchecked(real_cap*size_of::<usize>(), align_of::<usize>());
+        let new_layout: Layout = MemUtil::usize_array_layout(real_cap);
         let new_ptr = alloc::alloc(new_layout);
         (new_ptr, new_layout)
     }
 
+    #[inline]
     pub(crate) fn handle_alloc_result(alloc_layout: Layout, alloc_result_ptr: *mut u8) -> NonNull<usize> {
         match NonNull::new(alloc_result_ptr) {
             Some(non_null) => non_null.cast::<usize>(),
             None => handle_alloc_error(alloc_layout)
         }
     }
-
-    pub(crate) unsafe fn make_layout(real_cap: usize) -> Layout {
-        Layout::from_size_align_unchecked(real_cap*size_of::<usize>(), align_of::<usize>())
-    }
 }
 
-impl<const BIT_WIDTH: usize> Drop for RawBitVec<BIT_WIDTH> {
+impl Drop for RawBitVec {
+    #[inline]
     fn drop(&mut self) {
-        if BIT_WIDTH > 0 {
-            unsafe {
-                let real_cap = IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.cap);
-                let layout = Self::make_layout(real_cap);
-                alloc::dealloc(self.ptr.as_ptr().cast(), layout)
-            }
+        unsafe {
+            let layout = MemUtil::usize_array_layout(self.true_cap);
+            alloc::dealloc(self.ptr.as_ptr().cast(), layout)
         }
-    }
-}
-
-impl<const BIT_WIDTH: usize> IntoIterator for RawBitVec<BIT_WIDTH> {
-    type Item = usize;
-
-    type IntoIter = RawBitVecIter<BIT_WIDTH>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let iter = RawBitVecIter{
-            ptr: self.ptr,
-            real_cap: IdxProxy::<BIT_WIDTH>::calc_real_count_from_bitwise_count(self.cap),
-            start: 0,
-            end_excluded: self.len,
-        };
-        mem::forget(self);
-        iter
     }
 }
