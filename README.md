@@ -1,7 +1,6 @@
 # grit-bitvec
 
-This crate provides `RawBitVec` and ~~`TypedBitVec`~~, a vector that can store data elements of fixed-size bit widths that do not fall into the 8/16/32/64/128
-size categories. For example, rather than storing a vector of `bool`s in one byte each, you can store them each as one bit. Another example would be storing unsigned integers that are always in the range 0-3 as exactly 2 bits, 0-7 as 3 bits, or 0-15 as 4 bits, or even a signed integer in the range -1024 to 1023 as 11 bits.
+This crate provides variants of `BitVec` a vector that can store data elements of fixed-size bit widths that do not fall into the 8/16/32/64/128 size categories. For example, rather than storing a vector of `bool`s in one byte each, you can store them each as one bit. Another example would be storing unsigned integers that are always in the range 0-3 as exactly 2 bits, 0-7 as 3 bits, or 0-15 as 4 bits, or even a signed integer in the range -1024 to 1023 as 11 bits.
 
 Both `Raw-` and `Typed-` versions use `usize` as the underlying data block type to take advantage of any possible arithmetic optimizations on native-size words, meaning that the maximum bit-width supported is the same as `usize::BITS`
 
@@ -21,7 +20,7 @@ This crate currently has no documentation, and full testing is ongoing:
 (self-evident) clear()  
 [x] push()  
 [x] pop()  
-[ ] insert()  
+[x] insert()  
 [ ] remove()  
 [ ] insert_bitvec()  
 [ ] insert_iter()  

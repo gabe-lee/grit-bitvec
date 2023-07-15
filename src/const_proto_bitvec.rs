@@ -25,7 +25,7 @@ use crate::{
 pub struct CProtoBitVec<const BIT_WIDTH: usize>(pub(crate) RawBitVec);
 
 impl<const BIT_WIDTH: usize> CProtoBitVec<BIT_WIDTH> {
-    pub(crate) const PROTO: BitProto = BitProto::create(BIT_WIDTH);
+    pub const PROTO: BitProto = BitProto::create(BIT_WIDTH);
 
     #[inline(always)]
     pub fn len(&self) -> usize {
