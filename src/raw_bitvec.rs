@@ -204,11 +204,11 @@ impl RawBitVec {
 
     #[inline]
     pub unsafe fn remove_unchecked(&mut self, proto: BitProto, idx: usize) -> usize {
-        self.len -= 1;
         let idx_proxy = BitProto::idx_proxy(proto, idx);
         let shift_proxy = BitProto::idx_proxy(proto, idx+1);
         let val = self.replace_val_with_idx_proxy(idx_proxy, 0);
         self.shift_elements_down_with_with_idx_proxy(proto, idx_proxy, shift_proxy, 1);
+        self.len -= 1;
         val
     }
 
@@ -275,8 +275,8 @@ impl RawBitVec {
     }
 
     #[inline]
-    pub unsafe fn trim_excess_capacity(&mut self, proto: BitProto, extra_capacity_to_keep: usize) -> Result<(), String> {
-        let target_capacity = self.len.saturating_add(extra_capacity_to_keep);
+    pub unsafe fn shrink_excess_capacity(&mut self, proto: BitProto, target_extra_capacity: usize) -> Result<(), String> {
+        let target_capacity = self.len.saturating_add(target_extra_capacity);
         if target_capacity < self.cap(proto) {
             let target_block_capacity = BitProto::calc_block_count_from_bitwise_count(proto, target_capacity);
             let new_layout = MemUtil::usize_array_layout(target_block_capacity);
@@ -512,18 +512,17 @@ impl RawBitVec {
             let mut blocks_shifted = 0;
             let mut rollover_bits_paste: usize = 0; 
             let mut rollover_bits_copy: usize; 
-            block_ptr = self.ptr.as_ptr().add(real_len-whole_blocks-1);
+            block_ptr = self.ptr.as_ptr().add(real_len-whole_blocks);
             while blocks_shifted < block_count {
+                block_ptr = block_ptr.sub(1);
                 block_bits = ptr::read(block_ptr);
                 rollover_bits_copy = (block_bits & rollover_mask) << rollover_shift;
                 block_bits = (block_bits >> rollover_bits) | rollover_bits_paste;
                 ptr::write(block_ptr, block_bits);
-                block_ptr = block_ptr.sub(1);
                 blocks_shifted += 1;
                 rollover_bits_paste = rollover_bits_copy;
             }
         }
-        block_ptr = self.ptr.as_ptr().add(begin_proxy.real_idx);
         block_bits = ptr::read(block_ptr);
         ptr::write(block_ptr, block_bits | keep_first_bits);
     }

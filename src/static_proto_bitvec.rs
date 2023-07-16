@@ -168,7 +168,7 @@ impl SProtoBitVec {
 
     #[inline(always)]
     pub fn trim_excess_capacity(&mut self, extra_capacity_to_keep: usize) -> Result<(), String> {
-        unsafe{self.vec.trim_excess_capacity(*self.proto, extra_capacity_to_keep)}
+        unsafe{self.vec.shrink_excess_capacity(*self.proto, extra_capacity_to_keep)}
     }
 
     #[inline(always)]

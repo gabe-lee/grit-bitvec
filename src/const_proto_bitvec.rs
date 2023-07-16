@@ -162,7 +162,7 @@ impl<const BIT_WIDTH: usize> CProtoBitVec<BIT_WIDTH> {
 
     #[inline(always)]
     pub fn trim_excess_capacity(&mut self, extra_capacity_to_keep: usize) -> Result<(), String> {
-        unsafe{self.0.trim_excess_capacity(Self::PROTO, extra_capacity_to_keep)}
+        unsafe{self.0.shrink_excess_capacity(Self::PROTO, extra_capacity_to_keep)}
     }
     #[inline(always)]
     pub fn append_bitvec(&mut self, bitvec: Self) -> Result<(), String> {

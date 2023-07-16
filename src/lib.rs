@@ -6,7 +6,7 @@ byte each, you can store them each as one bit. Another example would be storing 
 range 0-3 as exactly 2 bits, 0-7 as 3 bits, 0-15 as 4 bits, or even a signed integer in the range -1024 to 1023 as 11 bits
 or a struct with 4 bools and 1 u8 in the range of 0-7 as a total of 7 bits.
 
-- [`RawBitVec`] : the base structure that all other variants wrap. Requires a [`BitProto`] to be passed to every function, and is UNSAFE if the same [`BitProto`] isnt used for all method calls on the same [`RawBitVec`]
+- [`RawBitVec`] : the base structure that all other variants wrap. Requires a [`BitProto`] to be passed to every function, and is UNSAFE if the same [`BitProto`] isnt used for all method calls on the same [`RawBitVec`] instance
 - [`CProtoBitVec<BIT_WIDTH>`] : a wrapper that takes the needed [`BitProto`] and stores it in a monomorphized constant for every separate `<BIT_WIDTH>`
 - [`SProtoBitVec`] : a wrapper that keeps a static reference to the needed [`BitProto`] in every instance
 - [`LProtoBitVec`] : a wrapper that keeps a full copy of the [`BitProto`] in every instance
@@ -21,7 +21,7 @@ cost of processing time to access the elements.
 The additional processing cost is not terrible in most cases, as it is mostly performed with bitwise shifts and simple
 arithmetic, and is further reduced by using constant propogation when applcable to reduce many bitwise math functions
 to their easiest possible form. However they are not free, and operations that insert or remove elements in the middle
-of the `-BitVec` may be even more costly due to the need to run those checks and shifts on every element rather than using
+of the `BitVec` may be even more costly due to the need to run those checks and shifts on every element rather than using
 `ptr::copy()` like `Vec` does internally
 
 By default the `small_int_impls` feature is enabled, providing simple `TypedBitElem` implementations for `bool` and
@@ -40,13 +40,13 @@ This crate currently has no documentation, and full testing is ongoing:
 [x] push()  
 [x] pop()  
 [x] insert()  
-[ ] remove()  
+[x] remove()  
 [ ] insert_bitvec()  
 [ ] insert_iter()  
 [ ] remove_range()  
 [ ] swap()  
 [ ] swap_pop()  
-[ ] trim_excess_capacity()  
+[ ] shrink_excess_capacity()  
 [ ] append_bitvec()  
 [ ] append_iter()  
 [ ] get()  
@@ -54,7 +54,6 @@ This crate currently has no documentation, and full testing is ongoing:
 [ ] replace()  
 [ ] drain()  
 [ ] into_iter()  
-
 
 This library is very much in the "unstable" phase and the API may change in the future
 */
