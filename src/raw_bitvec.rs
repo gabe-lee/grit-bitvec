@@ -309,6 +309,7 @@ impl RawBitVec {
                 self.write_val_with_idx_proxy(write_proxy, val);
                 count += 1;
         }
+        self.len += bitvec.len
     }
 
     #[inline]
@@ -546,7 +547,7 @@ impl RawBitVec {
                 },
             };
             let new_non_null = Self::handle_alloc_result(new_layout, new_ptr);
-            self.true_cap = true_min_capacity;
+            self.true_cap = new_true_cap;
             self.ptr = new_non_null;
             Ok(())
         } else {
@@ -574,8 +575,10 @@ impl Drop for RawBitVec {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let layout = MemUtil::usize_array_layout(self.true_cap);
-            alloc::dealloc(self.ptr.as_ptr().cast(), layout)
+            if self.true_cap > 0 {
+                let layout = MemUtil::usize_array_layout(self.true_cap);
+                alloc::dealloc(self.ptr.as_ptr().cast(), layout)
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 [package]
 name = "grit-bitvec"
 description = "Provides BitVec, a vector type that can store fixed-width data with irregular bit widths"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["Gabriel Lee Anderson <gla.ander@gmail.com>"]
 repository = "https://github.com/gabe-lee/grit-bitvec.git"
