@@ -1,5 +1,6 @@
 /*!
 # grit-bitvec
+#### WARNING: This crate is in the progress of testing, do not use methods without tests ([see below](#tested-functions))
 This crate provides variants of `BitVec` data structure, a vector that can store data elements of fixed-size bit widths
 that do not fall into the 8/16/32/64/128 size categories. For example, rather than storing a vector of `bool`s in one
 byte each, you can store them each as one bit. Another example would be storing unsigned integers that are always in the
@@ -30,33 +31,33 @@ be activated to get similar implementations for bit widths less than `usize::BIT
 
 This crate currently has no documentation, and full testing is ongoing:
 ### Tested Functions
-(self-evident) new()  
-(self-evident) with_capacity()  
-(self-evident) len()  
-(self-evident) cap()  
-(self-evident) free()  
-(self-evident) clear()  
-[x] grow_exact_for_total_elements_if_needed()
-(self-evident) grow_exact_for_additional_elements_if_needed()
-[x] grow_for_total_elements_if_needed()
-(self-evident) grow_for_additional_elements_if_needed
-[x] push()  
-[x] pop()  
-[x] insert()  
-[x] remove()  
-[ ] insert_bitvec()  
-[ ] insert_iter()  
-[ ] remove_range()  
-[ ] swap()  
-[ ] swap_pop()  
-[ ] shrink_excess_capacity()  
-[x] append_bitvec()  
-[ ] append_iter()  
-[ ] get()  
-[ ] set()  
-[ ] replace()  
-[ ] drain()  
-[ ] into_iter()  
+- (self-evident) new()  
+- (self-evident) with_capacity()  
+- (self-evident) len()  
+- (self-evident) cap()  
+- (self-evident) free()  
+- (self-evident) clear()  
+- [x] grow_exact_for_total_elements_if_needed()  
+- (self-evident) grow_exact_for_additional_elements_if_needed()  
+- [x] grow_for_total_elements_if_needed()  
+- (self-evident) grow_for_additional_elements_if_needed  
+- [x] push()  
+- [x] pop()  
+- [x] insert()  
+- [x] remove()  
+- [x] insert_bitvec()  
+- [ ] insert_iter()  
+- [ ] remove_range()  
+- [ ] swap()  
+- [ ] swap_pop()  
+- [ ] shrink_excess_capacity()  
+- [x] append_bitvec()  
+- [ ] append_iter()  
+- [ ] get()  
+- [ ] set()  
+- [ ] replace()  
+- [ ] drain()  
+- [ ] into_iter()  
 
 This library is very much in the "unstable" phase and the API may change in the future
 */
@@ -73,7 +74,7 @@ pub(crate) use core::{
     },
     marker::PhantomData,
     cmp::Ordering,
-    ops::Range
+    ops::Range,
 };
 
 pub(crate) use std::alloc::{self, Layout, handle_alloc_error};
@@ -112,7 +113,7 @@ mod utils;
 pub(crate) use utils::*;
 
 #[cfg(test)]
-mod bitvec_test;
+mod testing;
 
 
 

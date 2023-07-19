@@ -11,7 +11,7 @@ use crate::{
     MemUtil,
     Range,
     ManuallyDrop,
-    handle_alloc_error
+    handle_alloc_error,
 };
 
 /// ## `RawBitVec`: "Raw Bitwise Vector"  
@@ -179,15 +179,18 @@ impl RawBitVec {
 
     #[inline]
     pub unsafe fn insert_bitvec_unchecked(&mut self, proto: BitProto, insert_idx: usize, bitvec: Self) {
-        let mut count: usize = 0;
-        let begin_idx = BitProto::idx_proxy(proto, insert_idx);
-        self.shift_elements_up_with_with_idx_proxy(proto, begin_idx, count);
-        while count < bitvec.len {
-            let write_proxy = BitProto::idx_proxy(proto, insert_idx+count);
-            let read_proxy = BitProto::idx_proxy(proto, count);
-            let val = bitvec.read_val_with_idx_proxy(read_proxy);
-            self.write_val_with_idx_proxy(write_proxy, val);
-            count += 1;
+        if bitvec.len > 0 {
+            let begin_idx = BitProto::idx_proxy(proto, insert_idx);
+            self.shift_elements_up_with_with_idx_proxy(proto, begin_idx, bitvec.len);
+            self.len += bitvec.len;
+            let mut count: usize = 0;
+            while count < bitvec.len {
+                let write_proxy = BitProto::idx_proxy(proto, insert_idx+count);
+                let read_proxy = BitProto::idx_proxy(proto, count);
+                let val = bitvec.read_val_with_idx_proxy(read_proxy);
+                self.write_val_with_idx_proxy(write_proxy, val);
+                count += 1;
+            }
         }
     }
 
@@ -399,7 +402,7 @@ impl RawBitVec {
     pub(crate) unsafe fn read_val_with_idx_proxy(&self, idx_proxy: IdxProxy) -> usize {
         let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
-        let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
+        let mut val: usize = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
         if idx_proxy.second_mask != 0 {
             block_ptr = block_ptr.add(1);
             block_bits = ptr::read(block_ptr);
@@ -455,8 +458,10 @@ impl RawBitVec {
 
     #[inline]
     pub(crate) unsafe fn shift_elements_up_with_with_idx_proxy(&mut self, proto: BitProto, begin_proxy: IdxProxy, shift_count: usize) {
-        let new_real_len = BitProto::calc_block_count_from_bitwise_count(proto, self.len+shift_count);
-        let block_count = new_real_len - begin_proxy.real_idx;
+        let real_len = BitProto::calc_block_count_from_bitwise_count(proto, self.len);
+        let blocks_until_end = real_len - begin_proxy.real_idx;
+        let final_real_len = BitProto::calc_block_count_from_bitwise_count(proto, self.len+shift_count);
+        let end_excluded_block_ptr = self.ptr.as_ptr().add(final_real_len);
         let mut block_ptr = self.ptr.as_ptr().add(begin_proxy.real_idx);
         let mut block_bits = ptr::read(block_ptr);
         let keep_first_mask = BitUtil::all_bits_less_than_bit(begin_proxy.first_offset);
@@ -465,24 +470,22 @@ impl RawBitVec {
         ptr::write(block_ptr, block_bits);
         let total_bits_shifted = shift_count * proto.BITS;
         let whole_blocks = total_bits_shifted / BitUtil::USIZE_BITS;
-        if whole_blocks > 0 {
-            ptr::copy(block_ptr, block_ptr.add(whole_blocks), block_count);
-            block_ptr = block_ptr.add(whole_blocks)
-        }
         let rollover_bits = total_bits_shifted - (whole_blocks * BitUtil::USIZE_BITS);
+        if whole_blocks > 0 {
+            ptr::copy(block_ptr, block_ptr.add(whole_blocks), blocks_until_end);
+            block_ptr = block_ptr.add(whole_blocks);
+        }
         if rollover_bits > 0 {
             let rollover_shift = BitUtil::USIZE_BITS - rollover_bits;
             let rollover_mask = usize::MAX << rollover_shift;
-            let mut blocks_shifted = 0;
             let mut rollover_bits_paste: usize = 0; 
             let mut rollover_bits_copy: usize; 
-            while blocks_shifted < block_count {
+            while block_ptr < end_excluded_block_ptr {
                 block_bits = ptr::read(block_ptr);
                 rollover_bits_copy = (block_bits & rollover_mask) >> rollover_shift;
                 block_bits = (block_bits << rollover_bits) | rollover_bits_paste;
                 ptr::write(block_ptr, block_bits);
                 block_ptr = block_ptr.add(1);
-                blocks_shifted += 1;
                 rollover_bits_paste = rollover_bits_copy;
             }
         }
@@ -580,5 +583,22 @@ impl Drop for RawBitVec {
                 alloc::dealloc(self.ptr.as_ptr().cast(), layout)
             }
         }
+    }
+}
+
+#[cfg(debug_assertions)]
+impl RawBitVec {
+    #[allow(dead_code)]
+    pub(crate) fn debug_string(&self, proto: BitProto) -> String {
+        let true_len = BitProto::calc_block_count_from_bitwise_count(proto, self.len);
+        let elem_cap = BitProto::calc_bitwise_count_from_block_count(proto, self.true_cap);
+        let mut output = format!("elem len = {}\nelem cap = {}\ntrue len = {}\ntrue cap = {}\ndata: \n", self.len, elem_cap, true_len, self.true_cap);
+        let mut i = 0usize;
+        while i < true_len {
+            let block = unsafe{ptr::read(self.ptr.as_ptr().add(i))};
+            output.push_str(format!("{} = {:064b}\n", i, block).as_str());
+            i += 1;
+        }
+        output
     }
 }
