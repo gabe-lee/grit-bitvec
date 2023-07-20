@@ -298,6 +298,50 @@ fn append_bitvec() -> Result<(), String> {
 }
 
 #[test]
+fn append_iter() -> Result<(), String> {
+    let mut bitvec = CProtoBitVec::<4>::with_capacity(58);
+    let mut to_append_1 = CProtoBitVec::<4>::with_capacity(33);
+    let mut to_append_2 = CProtoBitVec::<4>::with_capacity(25);
+    let mut to_append_3 = CProtoBitVec::<4>::with_capacity(17);
+    let empty_append = CProtoBitVec::<4>::new();
+    let mut to_append_1_extra_a = CProtoBitVec::<4>::with_capacity(1);
+    let mut to_append_1_extra_b = CProtoBitVec::<4>::with_capacity(1);
+    to_append_1_extra_a.push(_1111)?;
+    to_append_1_extra_b.push(_1111)?;
+    let proto = CProtoBitVec::<4>::PROTO;
+    //                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(to_append_1, 33,  [0b__0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1111__usize, 0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1000__usize]);
+    //                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(to_append_2, 25,  [0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize, 0b__0000_0000_0000_0000_0000_0000_0000_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize]);
+    //                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(to_append_3, 17,  [0b__1111_1110_1101_1100_1011_1010_1001_1000_0111_0110_0101_0100_0011_0010_0001_0000__usize, 0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1111__usize]);
+    let to_append_1 = to_append_1.into_iter();
+    let to_append_2 = to_append_2.into_iter();
+    let to_append_3 = to_append_3.into_iter();
+    let empty_append = empty_append.into_iter();
+    let to_append_1_extra_a = to_append_1_extra_a.into_iter();
+    let to_append_1_extra_b = to_append_1_extra_b.into_iter();
+    assert_bvec_state!("1", proto, bitvec, 0, 64, [0usize; 0]);
+    bitvec.append_iter(to_append_1)?;
+    //                                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("2", proto, bitvec, 33, 64, [0b__0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1111__usize, 0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1000__usize]);
+    bitvec.append_iter(to_append_2)?;
+    //                                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("3", proto, bitvec, 58, 64, [0b__0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1111__usize, 0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1000__usize, 0b__0000_0000_0000_0000_0000_0000_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize]);
+    bitvec.append_iter(to_append_3)?;
+    //                                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("4", proto, bitvec, 75, 112, [0b__0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1111__usize, 0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1000__usize, 0b__0101_0100_0011_0010_0001_0000_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize, 0b__0000_0000_0000_0000_0000_1111_1111_1110_1101_1100_1011_1010_1001_1000_0111_0110__usize]);
+    let old_true_cap = bitvec.0.true_cap;
+    bitvec.0.true_cap = BitProto::calc_block_count_from_bitwise_count(proto, proto.MAX_CAPACITY);
+    bitvec.append_iter(to_append_1_extra_a)?;
+    bitvec.0.len = proto.MAX_CAPACITY;
+    bitvec.append_iter(empty_append)?;
+    assert_error!("5", bitvec.append_iter(to_append_1_extra_b));
+    bitvec.0.true_cap = old_true_cap;
+    Ok(())
+}
+
+#[test]
 fn insert_bitvec() -> Result<(), String> {
     let mut bitvec = CProtoBitVec::<4>::with_capacity(60);
     let mut to_insert_1 = CProtoBitVec::<4>::with_capacity(33);
@@ -338,6 +382,57 @@ fn insert_bitvec() -> Result<(), String> {
     bitvec.0.len = proto.MAX_CAPACITY;
     bitvec.insert_bitvec(0, empty_insert)?;
     assert_error!("7", bitvec.insert_bitvec(0, to_insert_1_extra_b));
+    bitvec.0.true_cap = old_true_cap;
+    Ok(())
+}
+
+#[test]
+fn insert_iter() -> Result<(), String> {
+    let mut bitvec = CProtoBitVec::<4>::with_capacity(60);
+    let mut to_insert_1 = CProtoBitVec::<4>::with_capacity(33);
+    let mut to_insert_2 = CProtoBitVec::<4>::with_capacity(25);
+    let mut to_insert_3 = CProtoBitVec::<4>::with_capacity(17);
+    let empty_insert = CProtoBitVec::<4>::new();
+    let mut to_insert_1_extra_a = CProtoBitVec::<4>::with_capacity(1);
+    let mut to_insert_1_extra_b = CProtoBitVec::<4>::with_capacity(1);
+    let to_insert_1_extra_c = CProtoBitVec::<4>::with_capacity(1);
+    to_insert_1_extra_a.push(_1111)?;
+    to_insert_1_extra_b.push(_1111)?;
+    let proto = CProtoBitVec::<4>::PROTO;
+    //                              15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(bitvec, 2,  [0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1001_1001__usize]);
+    //                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(to_insert_1, 33,  [0b__0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1111__usize, 0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1000__usize]);
+    //                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(to_insert_2, 25,  [0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize, 0b__0000_0000_0000_0000_0000_0000_0000_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize]);
+    //                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    force_write!(to_insert_3, 17,  [0b__1111_1110_1101_1100_1011_1010_1001_1000_0111_0110_0101_0100_0011_0010_0001_0000__usize, 0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1111__usize]);
+    let to_insert_1 = to_insert_1.into_iter();
+    let to_insert_2 = to_insert_2.into_iter();
+    let to_insert_3 = to_insert_3.into_iter();
+    let empty_insert = empty_insert.into_iter();
+    let to_insert_1_extra_a = to_insert_1_extra_a.into_iter();
+    let to_insert_1_extra_b = to_insert_1_extra_b.into_iter();
+    let to_insert_1_extra_c = to_insert_1_extra_c.into_iter();
+    assert_bvec_state!("1", proto, bitvec, 2, 64, [0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1001_1001__usize]);
+    bitvec.insert_iter(1, to_insert_1)?;
+    //                                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("2", proto, bitvec, 35, 64, [0b__1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_1001__usize, 0b__1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1111_0110__usize, 0b__0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_1001_1000_1010__usize]);
+    bitvec.insert_iter(1, to_insert_2)?;
+    //                                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("3", proto, bitvec, 60, 64, [0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1001__usize, 0b__0110_1111_0110_1111_0110_1111_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize, 0b__1010_1010_1010_1010_1010_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__0000_0000_0000_1001_1000_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010__usize]);
+    bitvec.insert_iter(24, to_insert_3)?;
+    //                                                    15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("4", proto, bitvec, 77, 112, [0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1001__usize, 0b__0111_0110_0101_0100_0011_0010_0001_0000_1100_1100_1100_1100_1100_1100_1100_1100__usize, 0b__1111_0110_1111_0110_1111_1100_1100_1111_1111_1110_1101_1100_1011_1010_1001_1000__usize, 0b__1010_1010_1010_1010_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110__usize, 0b__0000_0000_0000_1001_1000_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010__usize]);
+    let old_true_cap = bitvec.0.true_cap;
+    bitvec.0.true_cap = BitProto::calc_block_count_from_bitwise_count(proto, proto.MAX_CAPACITY);
+    bitvec.insert_iter(0, to_insert_1_extra_a)?;
+    //                                                            15   14   13   12   11   10    9    8    7    6    5    4    3    2    1    0               31   30   29   28   27   26   25   24   23   22   21   20   19   18   17   16               47   46   45   44   43   42   41   40   39   38   37   36   35   34   33   32
+    assert_bvec_state!("5", proto, bitvec, 78, proto.MAX_CAPACITY, [0b__1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1100_1001_1111__usize, 0b__0110_0101_0100_0011_0010_0001_0000_1100_1100_1100_1100_1100_1100_1100_1100_1100__usize, 0b__0110_1111_0110_1111_1100_1100_1111_1111_1110_1101_1100_1011_1010_1001_1000_0111__usize, 0b__1010_1010_1010_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111_0110_1111__usize, 0b__0000_0000_1001_1000_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010__usize]);
+    assert_error!("6", bitvec.insert_iter(1000, to_insert_1_extra_c));
+    bitvec.0.len = proto.MAX_CAPACITY;
+    bitvec.insert_iter(0, empty_insert)?;
+    assert_error!("7", bitvec.insert_iter(0, to_insert_1_extra_b));
     bitvec.0.true_cap = old_true_cap;
     Ok(())
 }

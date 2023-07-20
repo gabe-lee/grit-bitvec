@@ -118,6 +118,18 @@ impl LProtoBitVec {
         self.vec.insert_bitvec_unchecked(self.proto, insert_idx, bitvec.into_raw())
     }
 
+    #[inline]
+    pub fn insert_iter<II, TO, ESI>(&mut self, insert_idx: usize, source: II) -> Result<(), String>
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        unsafe {self.vec.insert_iter(self.proto, insert_idx, source)}
+    }
+
+    #[inline]
+    pub unsafe fn insert_iter_unchecked<II, TO, ESI>(&mut self, insert_idx: usize, source: II)
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        self.vec.insert_iter_unchecked(self.proto, insert_idx, source)
+    }
+
     #[inline(always)]
     pub fn remove(&mut self, idx: usize) -> Result<usize, String> {
         unsafe{self.vec.remove(self.proto, idx)}

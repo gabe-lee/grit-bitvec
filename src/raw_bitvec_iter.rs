@@ -19,40 +19,45 @@ impl RawBitVecIter {
     pub unsafe fn next(&mut self, proto: BitProto) -> Option<usize> {
         match self.start == self.end_excluded {
             true => None,
-            false => unsafe {
-                let idx_proxy = BitProto::idx_proxy(proto, self.start);
-                let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
-                let mut block_bits = ptr::read(block_ptr);
-                let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
-                if idx_proxy.second_mask != 0 {
-                    block_ptr = block_ptr.add(1);
-                    block_bits = ptr::read(block_ptr);
-                    val = val | ((block_bits & idx_proxy.second_mask) << idx_proxy.second_offset);
-                }
-                self.start += 1;
-                Some(val)
-            }
+            false => Some(self.next_unchecked(proto))
         }
+    }
+
+    #[inline]
+    pub unsafe fn next_unchecked(&mut self, proto: BitProto) -> usize {
+        let idx_proxy = BitProto::idx_proxy(proto, self.start);
+        let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
+        let mut block_bits = ptr::read(block_ptr);
+        let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
+        if idx_proxy.second_mask != 0 {
+            block_ptr = block_ptr.add(1);
+            block_bits = ptr::read(block_ptr);
+            val = val | ((block_bits & idx_proxy.second_mask) << idx_proxy.second_offset);
+        }
+        self.start += 1;
+        val
     }
 
     #[inline]
     pub unsafe fn next_back(&mut self, proto: BitProto) -> Option<usize> {
         match self.start == self.end_excluded {
             true => None,
-            false => unsafe {
-                self.end_excluded -= 1;
-                let idx_proxy = BitProto::idx_proxy(proto, self.end_excluded);
-                let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
-                let mut block_bits = ptr::read(block_ptr);
-                let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
-                if idx_proxy.second_mask != 0 {
-                    block_ptr = block_ptr.add(1);
-                    block_bits = ptr::read(block_ptr);
-                    val = val | ((block_bits & idx_proxy.second_mask) << idx_proxy.second_offset);
-                }
-                Some(val)
-            }
+            false => Some(self.next_back_unchecked(proto))
         }
+    }
+
+    pub unsafe fn next_back_unchecked(&mut self, proto: BitProto) -> usize {
+        self.end_excluded -= 1;
+        let idx_proxy = BitProto::idx_proxy(proto, self.end_excluded);
+        let mut block_ptr = self.ptr.as_ptr().add(idx_proxy.real_idx);
+        let mut block_bits = ptr::read(block_ptr);
+        let mut val = (block_bits & idx_proxy.first_mask) >> idx_proxy.first_offset;
+        if idx_proxy.second_mask != 0 {
+            block_ptr = block_ptr.add(1);
+            block_bits = ptr::read(block_ptr);
+            val = val | ((block_bits & idx_proxy.second_mask) << idx_proxy.second_offset);
+        }
+        val
     }
 
     #[inline(always)]
@@ -64,7 +69,9 @@ impl RawBitVecIter {
 impl Drop for RawBitVecIter  {
     #[inline(always)]
     fn drop(&mut self) {
-        unsafe {alloc::dealloc(self.ptr.as_ptr().cast(), MemUtil::usize_array_layout(self.true_cap))};
+        if self.true_cap > 0 {
+            unsafe {alloc::dealloc(self.ptr.as_ptr().cast(), MemUtil::usize_array_layout(self.true_cap))};
+        }
     }
 }
 
@@ -79,26 +86,32 @@ impl<'vec> RawBitVecDrain<'vec> {
     pub unsafe fn next(&mut self, proto: BitProto) -> Option<usize> {
         match self.start == self.end_excluded {
             true => None,
-            false => unsafe {
-                let idx_proxy = BitProto::idx_proxy(proto, self.start);
-                let val = self.vec.replace_val_with_idx_proxy(idx_proxy, 0);
-                self.start += 1;
-                Some(val)
-            }
+            false => Some(self.next_unchecked(proto))
         }
+    }
+
+    #[inline]
+    pub unsafe fn next_unchecked(&mut self, proto: BitProto) -> usize {
+        let idx_proxy = BitProto::idx_proxy(proto, self.start);
+        let val = self.vec.replace_val_with_idx_proxy(idx_proxy, 0);
+        self.start += 1;
+        val
     }
 
     #[inline]
     pub unsafe fn next_back(&mut self, proto: BitProto) -> Option<usize> {
         match self.start == self.end_excluded {
             true => None,
-            false => unsafe {
-                self.end_excluded -= 1;
-                let idx_proxy = BitProto::idx_proxy(proto, self.end_excluded);
-                let val = self.vec.replace_val_with_idx_proxy(idx_proxy, 0);
-                Some(val)
-            }
+            false => Some(self.next_back_unchecked(proto))
         }
+    }
+
+    #[inline]
+    pub unsafe fn next_back_unchecked(&mut self, proto: BitProto) -> usize {
+        self.end_excluded -= 1;
+        let idx_proxy = BitProto::idx_proxy(proto, self.end_excluded);
+        let val = self.vec.replace_val_with_idx_proxy(idx_proxy, 0);
+        val
     }
 
     #[inline(always)]

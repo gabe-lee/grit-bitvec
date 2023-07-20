@@ -31,33 +31,33 @@ be activated to get similar implementations for bit widths less than `usize::BIT
 
 This crate currently has no documentation, and full testing is ongoing:
 ### Tested Functions
-- (self-evident) new()  
-- (self-evident) with_capacity()  
-- (self-evident) len()  
-- (self-evident) cap()  
-- (self-evident) free()  
-- (self-evident) clear()  
+- [x] new()  
+- [x] with_capacity()  
+- [x] len()  
+- [x] cap()  
+- [x] free()  
+- [x] clear()  
 - [x] grow_exact_for_total_elements_if_needed()  
-- (self-evident) grow_exact_for_additional_elements_if_needed()  
+- [x] grow_exact_for_additional_elements_if_needed()  
 - [x] grow_for_total_elements_if_needed()  
-- (self-evident) grow_for_additional_elements_if_needed  
+- [x] grow_for_additional_elements_if_needed  
 - [x] push()  
 - [x] pop()  
 - [x] insert()  
 - [x] remove()  
 - [x] insert_bitvec()  
-- [ ] insert_iter()  
+- [x] insert_iter()  
 - [ ] remove_range()  
 - [ ] swap()  
 - [ ] swap_pop()  
 - [ ] shrink_excess_capacity()  
 - [x] append_bitvec()  
-- [ ] append_iter()  
+- [x] append_iter()  
 - [ ] get()  
 - [ ] set()  
 - [ ] replace()  
-- [ ] drain()  
-- [ ] into_iter()  
+- [x] drain()  
+- [x] into_iter()  
 
 This library is very much in the "unstable" phase and the API may change in the future
 */

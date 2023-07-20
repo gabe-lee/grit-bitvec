@@ -80,6 +80,9 @@ impl RawBitVec {
 
     #[inline]
     pub unsafe fn grow_exact_for_additional_elements_if_needed(&mut self, proto: BitProto, extra_elements: usize) -> Result<(), String> {
+        if usize::MAX - extra_elements > self.len {
+            return Err(format!("{} extra elements would overflow usize::MAX", extra_elements));
+        }
         self.handle_grow_if_needed(proto, self.len + extra_elements, false)
     }
 
@@ -90,6 +93,9 @@ impl RawBitVec {
 
     #[inline]
     pub unsafe fn grow_for_additional_elements_if_needed(&mut self, proto: BitProto, extra_elements: usize) -> Result<(), String> {
+        if usize::MAX - extra_elements > self.len {
+            return Err(format!("{} extra elements would overflow usize::MAX", extra_elements));
+        }
         self.handle_grow_if_needed(proto, self.len + extra_elements, true)
     }
 
@@ -189,6 +195,44 @@ impl RawBitVec {
                 let read_proxy = BitProto::idx_proxy(proto, count);
                 let val = bitvec.read_val_with_idx_proxy(read_proxy);
                 self.write_val_with_idx_proxy(write_proxy, val);
+                count += 1;
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn insert_iter<II, TO, ESI>(&mut self, proto: BitProto, insert_idx: usize, source: II) -> Result<(), String>
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        if insert_idx > self.len {
+            return Err(format!("index out of bounds for insert_iter: (idx) {} > {} (len)", insert_idx, self.len));
+        }
+        let iter = source.into_iter();
+        if proto.MAX_CAPACITY - iter.len() < self.len {
+            return Err(format!("BitVec cannot hold {} more elements, {} elements would reach the maximum capacity ({})", iter.len(), proto.MAX_CAPACITY - self.len, proto.MAX_CAPACITY));
+        }
+        self.handle_grow_if_needed(proto, self.len + iter.len(), true)?;
+        if insert_idx == self.len {
+            self.append_iter_unchecked(proto, iter);
+        } else {
+            self.insert_iter_unchecked(proto, insert_idx, iter);
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn insert_iter_unchecked<II, TO, ESI>(&mut self, proto: BitProto, insert_idx: usize, source: II)
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        let mut iter = source.into_iter();
+        let iter_len = iter.len();
+        if iter_len > 0 {
+            let begin_idx = BitProto::idx_proxy(proto, insert_idx);
+            self.shift_elements_up_with_with_idx_proxy(proto, begin_idx, iter_len);
+            self.len += iter_len;
+            let mut count = 0usize;
+            while count < iter_len {
+                let write_proxy = BitProto::idx_proxy(proto, insert_idx+count);
+                let val = iter.next().unwrap();
+                self.write_val_with_idx_proxy(write_proxy, val.to_owned());
                 count += 1;
             }
         }
@@ -328,8 +372,9 @@ impl RawBitVec {
     }
 
     #[inline]
-    pub unsafe fn append_iter_unchecked<I, TO>(&mut self, proto: BitProto, iter: I)
-    where I: Iterator<Item = TO> + ExactSizeIterator, TO: ToOwned<Owned = usize> {
+    pub unsafe fn append_iter_unchecked<II, TO, ESI>(&mut self, proto: BitProto, source: II)
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        let iter = source.into_iter();
         for val in iter {
             self.push_unchecked(proto, val.to_owned())
         }

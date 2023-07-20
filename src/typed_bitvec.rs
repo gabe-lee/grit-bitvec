@@ -124,6 +124,18 @@ impl<T: TypedBitElem> TypedBitVec<T> {
         self.0.insert_bitvec_unchecked(T::PROTO, insert_idx, bitvec.into_raw())
     }
 
+    #[inline]
+    pub fn insert_iter<II, TO, ESI>(&mut self, insert_idx: usize, source: II) -> Result<(), String>
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        unsafe {self.0.insert_iter(T::PROTO, insert_idx, source)}
+    }
+
+    #[inline]
+    pub unsafe fn insert_iter_unchecked<II, TO, ESI>(&mut self, insert_idx: usize, source: II)
+    where II: IntoIterator<Item = TO, IntoIter = ESI>, TO: ToOwned<Owned = usize>, ESI: ExactSizeIterator + Iterator<Item = TO> {
+        self.0.insert_iter_unchecked(T::PROTO, insert_idx, source)
+    }
+
     #[inline(always)]
     pub fn remove(&mut self, idx: usize) -> Result<T::Base, String> {
         match unsafe{self.0.remove(T::PROTO, idx)} {
