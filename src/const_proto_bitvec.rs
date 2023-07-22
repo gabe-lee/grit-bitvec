@@ -1,3 +1,5 @@
+use std::ops::RangeFrom;
+
 use crate::{
     BitProto,
     RawBitVec,
@@ -153,6 +155,19 @@ impl<const BIT_WIDTH: usize> CProtoBitVec<BIT_WIDTH> {
     }
 
     #[inline(always)]
+    pub fn trim_range(&mut self, idx_range: RangeFrom<usize>) -> Result<Self, String> {
+        match unsafe{self.0.trim_range(Self::PROTO, idx_range)} {
+            Ok(raw) => Ok(Self(raw)),
+            Err(e) => Err(e),
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn trim_range_unchecked(&mut self, idx_range: RangeFrom<usize>) -> Self {
+        Self(self.0.trim_range_unchecked(Self::PROTO, idx_range))
+    }
+
+    #[inline(always)]
     pub fn swap(&mut self, idx_a: usize, idx_b: usize) -> Result<(), String> {
         unsafe{self.0.swap(Self::PROTO, idx_a, idx_b)}
     }
@@ -174,7 +189,7 @@ impl<const BIT_WIDTH: usize> CProtoBitVec<BIT_WIDTH> {
 
     #[inline(always)]
     pub fn trim_excess_capacity(&mut self, extra_capacity_to_keep: usize) -> Result<(), String> {
-        unsafe{self.0.shrink_excess_capacity(Self::PROTO, extra_capacity_to_keep)}
+        unsafe{self.0.trim_excess_capacity(Self::PROTO, extra_capacity_to_keep)}
     }
     #[inline(always)]
     pub fn append_bitvec(&mut self, bitvec: Self) -> Result<(), String> {

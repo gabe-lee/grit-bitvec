@@ -70,8 +70,16 @@ impl BitProto {
     }
 
     #[inline(always)]
-    pub(crate) fn calc_bitwise_count_from_block_count(proto: BitProto, block_count: usize) -> usize {
+    pub(crate) const fn calc_bitwise_count_from_block_count(proto: BitProto, block_count: usize) -> usize {
         BitUtil::calc_total_bits_in_num_usize(block_count) / proto.BITS
+    }
+
+    #[inline(always)]
+    pub(crate) fn check_value(proto: BitProto, val: usize) -> Result<(), String> {
+        match val > proto.MASK {
+            true => Err(format!("value cannot be represented in {} bits:\nmax bits = {:064b}\nval bits = {:064b}", proto.BITS, proto.MASK, val)),
+            false => Ok(())
+        }
     }
 }
 

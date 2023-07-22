@@ -1,6 +1,5 @@
 /*!
 # grit-bitvec
-#### WARNING: This crate is in the progress of testing, do not use methods without tests ([see below](#tested-functions))
 This crate provides variants of `BitVec` data structure, a vector that can store data elements of fixed-size bit widths
 that do not fall into the 8/16/32/64/128 size categories. For example, rather than storing a vector of `bool`s in one
 byte each, you can store them each as one bit. Another example would be storing unsigned integers that are always in the
@@ -29,7 +28,6 @@ By default the `small_int_impls` feature is enabled, providing simple `TypedBitE
 integer types smaller than 16 bits (for example `u8_as_u3` or `i16_as_i11`), and the `large_int_impls` feature can
 be activated to get similar implementations for bit widths less than `usize::BITS`
 
-This crate currently has no documentation, and full testing is ongoing:
 ### Tested Functions
 - [x] new()  
 - [x] with_capacity()  
@@ -47,19 +45,20 @@ This crate currently has no documentation, and full testing is ongoing:
 - [x] remove()  
 - [x] insert_bitvec()  
 - [x] insert_iter()  
-- [ ] remove_range()  
-- [ ] swap()  
-- [ ] swap_pop()  
-- [ ] shrink_excess_capacity()  
+- [x] remove_range()  
+- [x] trim_range()  
+- [x] swap()  
+- [x] swap_pop()  
+- [x] shrink_excess_capacity()  
 - [x] append_bitvec()  
 - [x] append_iter()  
-- [ ] get()  
-- [ ] set()  
-- [ ] replace()  
+- [x] get()  
+- [x] set()  
+- [x] replace()  
 - [x] drain()  
 - [x] into_iter()  
 
-This library is very much in the "unstable" phase and the API may change in the future
+This crate currently has incomplete documentation and is very much in the "unstable" phase. The API may change in the future
 */
 
 pub(crate) use core::{
@@ -79,8 +78,8 @@ pub(crate) use core::{
 
 pub(crate) use std::alloc::{self, Layout, handle_alloc_error};
 
-mod index_proxy;
-pub use index_proxy::*;
+mod proto_proxy;
+pub use proto_proxy::*;
 
 mod raw_bitvec;
 pub use raw_bitvec::*;
