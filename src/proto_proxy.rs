@@ -36,6 +36,20 @@ impl BitProto {
     }
 
     #[inline(always)]
+    pub const fn create_from_state_count(posible_states: usize) -> Self {
+        let mut current_states = 1 << (usize::BITS as usize - 1);
+        let mut current_bits: usize = usize::BITS as usize;
+        while current_bits > 0 {
+            if posible_states >= current_states {
+                return Self::create(current_bits);
+            }
+            current_bits -= 1;
+            current_states >>= 1;
+        }
+        panic!("bit_width cannot be 0 (use a zero-typed Vec instead)");
+    }
+
+    #[inline(always)]
     pub const fn idx_proxy(proto: BitProto, bitwise_idx: usize) -> IdxProxy {
         let total_bits = bitwise_idx * proto.BITS;
         let (real_idx, first_offset) = match BitUtil::USIZE_BITS {
