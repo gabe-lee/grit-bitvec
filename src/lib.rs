@@ -57,6 +57,7 @@ be activated to get similar implementations for bit widths less than `usize::BIT
 - [x] replace()  
 - [x] drain()  
 - [x] into_iter()  
+- [ ] discard_from_end()  
 
 This crate currently has incomplete documentation and is very much in the "unstable" phase. The API may change in the future
 */

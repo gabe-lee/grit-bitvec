@@ -468,6 +468,11 @@ impl RawBitVec {
     }
 
     #[inline]
+    pub fn discard_from_end(&mut self, count: usize) {
+        self.len = self.len.saturating_sub(count)
+    }
+
+    #[inline]
     pub fn drain<'vec>(&'vec mut self) -> RawBitVecDrain<'vec> {
         let len = self.len;
         RawBitVecDrain {

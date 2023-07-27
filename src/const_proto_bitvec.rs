@@ -240,6 +240,11 @@ impl<const BIT_WIDTH: usize> CProtoBitVec<BIT_WIDTH> {
         self.0.set_unchecked(Self::PROTO, idx, val)
     }
 
+    #[inline]
+    pub fn discard_from_end(&mut self, count: usize) {
+        self.0.discard_from_end(count)
+    }
+
     #[inline(always)]
     pub fn drain<'vec>(&'vec mut self) -> CProtoBitVecDrain<'vec, BIT_WIDTH> {
         CProtoBitVecDrain(self.0.drain())

@@ -263,6 +263,11 @@ impl<T: TypedBitElem> TypedBitVec<T> {
         self.0.set_unchecked(T::PROTO, idx, T::val_to_bits(val))
     }
 
+    #[inline]
+    pub fn discard_from_end(&mut self, count: usize) {
+        self.0.discard_from_end(count)
+    }
+
     #[inline(always)]
     pub fn drain<'vec>(&'vec mut self) -> TypedBitVecDrain<'vec, T> {
         TypedBitVecDrain(self.0.drain(), PhantomData)

@@ -257,6 +257,11 @@ impl LProtoBitVec {
         self.vec.set_unchecked(self.proto, idx, val)
     }
 
+    #[inline]
+    pub fn discard_from_end(&mut self, count: usize) {
+        self.vec.discard_from_end(count)
+    }
+
     #[inline(always)]
     pub fn drain<'vec>(&'vec mut self) -> LProtoBitVecDrain<'vec> {
         LProtoBitVecDrain{
