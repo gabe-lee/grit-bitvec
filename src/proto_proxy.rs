@@ -37,16 +37,19 @@ impl BitProto {
 
     #[inline(always)]
     pub const fn create_from_state_count(posible_states: usize) -> Self {
-        let mut current_states = 1 << (usize::BITS as usize - 1);
-        let mut current_bits: usize = usize::BITS as usize;
-        while current_bits > 0 {
-            if posible_states >= current_states {
-                return Self::create(current_bits);
-            }
-            current_bits -= 1;
-            current_states >>= 1;
+        if posible_states == 0 {
+            panic!("bit_width cannot be 0 (use a zero-typed Vec instead)");
         }
-        panic!("bit_width cannot be 0 (use a zero-typed Vec instead)");
+        let mut current_max_states: usize = 1;
+        let mut current_bits: usize = 0;
+        loop {
+            current_max_states <<= 1;
+            current_bits += 1;
+            if current_max_states >= posible_states || current_bits == usize::BITS as usize {
+                break;
+            }
+        }
+        Self::create(current_bits)
     }
 
     #[inline(always)]
